@@ -1,0 +1,694 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+Reference https://www.kaggle.com/airback/match-outcome-prediction-in-football?scriptVersionId=796746
+
+
+
+
+Load Libraries
+
+```{r Load Libraries, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(mlr)
+library(lubridate)
+library(parallelMap)
+library(RcppRoll)
+```
+
+Read Data
+
+```{r Read data from File and Clean it up, message=FALSE, warning=FALSE}
+#clear environ
+rm(list=ls())
+
+#Read data
+df <- read_csv("wc_datathon_dataset.csv")
+
+#change chars to factors
+df$team_1 <- parse_factor(df$team_1, levels = NULL)
+df$team_2 <- parse_factor(df$team_2, levels = NULL)
+df$tournament <- parse_factor(df$tournament, levels = NULL)
+#df$date <- parse_date_time(df$date, "dmy")
+
+#Create Win/Loss/Draw outcome variable
+df <- df %>% mutate(outcome = if_else(team_1_goals>team_2_goals, "win", if_else(team_1_goals<team_2_goals, "lose", "draw")))
+
+#create numeric win/draw/lose vector for summing on
+df <- df %>% mutate(team_1_outcome = if_else(outcome == "win", 1, if_else(outcome == "draw", 0, -1)))
+df <- df %>% mutate(team_2_outcome = -team_1_outcome)
+
+#convert dates to days since start point
+start_date <- df %>% pull(date) %>% min()
+df <- df %>% mutate(days = date - start_date)
+df$days <- parse_integer(df$days)
+rm(start_date)
+
+#create year field
+df <- df %>% mutate(year = year(date))
+
+#drop date field and goals
+df <- df %>% select(-date)
+#df <- df %>% select(-ends_with("goals"))
+df <- df %>% select(-is_team_2_home)
+
+#convert logicals to 1/0
+df <- df %>% mutate(is_team_1_home = ifelse(is_team_1_home, 1, 0))
+#df <- df %>% mutate(is_team_2_home = ifelse(is_team_2_home, 1, 0)) - all values are false, drop
+df <- df %>% mutate(is_neutral = ifelse(is_neutral, 1, 0))
+
+#Trim years from tournament name
+df <- df %>% mutate(tournament = str_remove(tournament, "[:digit:]{4}[:blank:]*") %>% str_trim())
+df$tournament <- parse_factor(df$tournament, levels = NULL)
+
+#one-hot encoding on the new tournament variable
+df <- createDummyFeatures(df, target = "outcome", cols = "tournament")
+
+
+# drop friendly matches
+#df <- df %>% filter(tournament != "Friendly")
+
+#Create dummy variables for team_1 and team_2 (one-hot encoding) - this wasn't helpful
+#encoded <- createDummyFeatures(df, target = "outcome", cols = c("team_1", "team_2"))
+
+#set a common factor level across two team colums
+team_list1 <- df %>% pull(team_1) %>% unique() %>% as.character() %>% as.tibble()
+team_list2 <- df %>% pull(team_2) %>% unique() %>% as.character() %>% as.tibble()
+team_list <- rbind(team_list1,team_list2)
+team_list <- team_list %>% unique() 
+team_list$value <- parse_factor(team_list$value, levels=NULL)
+
+df$team_1 <- parse_factor(df$team_1, levels = levels(team_list$value))
+df$team_2 <- parse_factor(df$team_2, levels = levels(team_list$value))
+
+#create team value column using the factor index
+df <- df %>% mutate(team_1_index = as.integer(team_1))
+df <- df %>% mutate(team_2_index = as.integer(team_2))
+
+
+#clean up
+rm(team_list)
+rm(team_list1)
+rm(team_list2)
+
+```
+
+
+Determine random selection accuracy for benchmarking
+
+
+```{r Determine baseline accuracy benchmarks (random selection)}
+#what is the percentage of each outcome?
+#df %>% group_by(outcome) %>% count() 
+
+#if we randomly choose win, the accuracy will be:
+
+random_win_prob = 7044/(7044+3992+3530)
+random_draw_prob = 3530/(7044+3992+3530)
+random_loss_prob = 3992/(7044+3992+3530)
+
+n = nrow(df)
+
+random_accuracy <- measureACC(df$outcome, rep("win", n))
+random_mmce <- measureMMCE(df$outcome, rep("win", n))
+
+#create probability matrix
+
+probability_matrix = tibble(win=rep(random_win_prob,n), draw=rep(random_draw_prob,n), lose=rep(random_loss_prob,n))
+probability_matrix <- as.matrix(probability_matrix)
+random_logloss <- measureLogloss(probability_matrix, df$outcome)
+
+
+#what is the percentage of each outcome for world cup only?
+dfwc <- df %>% filter(tournament.World.Cup == 1) 
+#dfwc %>% group_by(outcome) %>% count() 
+
+#if we randomly choose win, the accuracy will be:
+
+random_win_prob = 114/(114+60+82)
+random_draw_prob = 60/(114+60+82)
+random_loss_prob = 82/(114+60+82)
+
+nwc = (114+60+82)
+
+random_accuracy_wc <- measureACC(dfwc$outcome, rep("win", nwc))
+random_mmce_wc <- measureMMCE(dfwc$outcome, rep("win", nwc))
+
+#create probability matrix
+
+probability_matrix = tibble(win=rep(random_win_prob,nwc), draw=rep(random_draw_prob,nwc), lose=rep(random_loss_prob,nwc))
+probability_matrix <- as.matrix(probability_matrix)
+random_logloss_wc <- measureLogloss(probability_matrix, dfwc$outcome)
+
+
+
+#clean up
+rm(dfwc)
+rm(probability_matrix)
+rm(nwc)
+rm(random_win_prob)
+rm(random_draw_prob)
+rm(random_loss_prob)
+
+```
+
+
+
+
+
+
+
+Scratch Pad
+
+```{r Scratch Pad}
+df %>% group_by(year,tournament)  %>%  count() %>% arrange(year)
+
+summarizeColumns(df)
+
+rin$train.inds[[1]] <- 1:2754
+rin$test.inds[[1]] <- 2755:2818
+#World Cup 2006
+rin$train.inds[[2]] <- 1:5687
+rin$test.inds[[2]] <- 5688:5751
+#World Cup 2010
+rin$train.inds[[3]] <- 1:8698
+rin$test.inds[[3]] <- 8699:8762
+#World Cup 2014
+rin$train.inds[[4]] <- 1:11805
+rin$test.inds[[4]] <- 11806:11869
+
+df %>% slice(c(11806,11869)) %>% select(team_1, team_2, tournament)
+
+
+
+
+```
+
+
+###Feature Engineering
+
+Create ranking & for/against goal count features for 2 game rolling
+
+```{r Create Features for 2 game rolling}
+
+
+#create rolling 2 match sum of outcome
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_outcome = roll_sum(lag(team_1_outcome, 1), n = 2, align = "right", fill=0))
+df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_2_outcome)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_2_outcome = roll_sum(lag(team_2_outcome, 1), n = 2, align = "right", fill=0))
+df$team_2_rolling_2_outcome <- df$team_2_rolling_2_outcome %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_2_outcome)
+
+#create rolling 2 match sum of for goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_forgoals = roll_sum(lag(team_1_goals, 1), n = 2, align = "right", fill=0))
+df$team_1_rolling_2_forgoals <- df$team_1_rolling_2_forgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_2_forgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_2_forgoals = roll_sum(lag(team_2_goals, 1), n = 2, align = "right", fill=0))
+df$team_2_rolling_2_forgoals <- df$team_2_rolling_2_forgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_2_forgoals)
+
+#create rolling 2 match sum of against goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_againstgoals = roll_sum(lag(team_2_goals, 1), n = 2, align = "right", fill=0))
+df$team_1_rolling_2_againstgoals <- df$team_1_rolling_2_againstgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_2_againstgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_2_againstgoals = roll_sum(lag(team_1_goals, 1), n = 2, align = "right", fill=0))
+df$team_2_rolling_2_againstgoals <- df$team_2_rolling_2_againstgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_2_againstgoals)
+
+#create win balance and goal balances (relative to team 1)
+df <- df %>% mutate(rolling_2_win_balance = team_1_rolling_2_outcome - team_2_rolling_2_outcome)
+df <- df %>% mutate(rolling_2_forgoal_balance = team_1_rolling_2_forgoals - team_2_rolling_2_forgoals)
+df <- df %>% mutate(rolling_2_againstgoal_balance = team_1_rolling_2_againstgoals - team_2_rolling_2_againstgoals)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_2_outcome, team_2_rolling_2_outcome, rolling_2_win_balance)
+```
+
+
+Create ranking & for/against goal count features for 5 game rolling
+
+```{r Create Features for 5 game rolling}
+#create rolling 5 match sum of outcome
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_5_outcome = roll_sum(lag(team_1_outcome, 1), n = 5, align = "right", fill=0))
+df$team_1_rolling_5_outcome <- df$team_1_rolling_5_outcome %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_5_outcome)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_5_outcome = roll_sum(lag(team_2_outcome, 1), n = 5, align = "right", fill=0))
+df$team_2_rolling_5_outcome <- df$team_2_rolling_5_outcome %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_5_outcome)
+
+#create rolling 5 match sum of for goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_5_forgoals = roll_sum(lag(team_1_goals, 1), n = 5, align = "right", fill=0))
+df$team_1_rolling_5_forgoals <- df$team_1_rolling_5_forgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_5_forgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_5_forgoals = roll_sum(lag(team_2_goals, 1), n = 5, align = "right", fill=0))
+df$team_2_rolling_5_forgoals <- df$team_2_rolling_5_forgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_5_forgoals)
+
+#create rolling 5 match sum of against goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_5_againstgoals = roll_sum(lag(team_2_goals, 1), n = 5, align = "right", fill=0))
+df$team_1_rolling_5_againstgoals <- df$team_1_rolling_5_againstgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_5_againstgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_5_againstgoals = roll_sum(lag(team_1_goals, 1), n = 5, align = "right", fill=0))
+df$team_2_rolling_5_againstgoals <- df$team_2_rolling_5_againstgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_5_againstgoals)
+
+#create win balance and goal balances (relative to team 1)
+df <- df %>% mutate(rolling_5_win_balance = team_1_rolling_5_outcome - team_2_rolling_5_outcome)
+df <- df %>% mutate(rolling_5_forgoal_balance = team_1_rolling_5_forgoals - team_2_rolling_5_forgoals)
+df <- df %>% mutate(rolling_5_againstgoal_balance = team_1_rolling_5_againstgoals - team_2_rolling_5_againstgoals)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_5_outcome, team_2_rolling_5_outcome, rolling_5_win_balance)
+```
+
+Create ranking & for/against goal count features for 10 game rolling
+
+```{r Create Features for 10 game rolling}
+#create rolling 10 match sum of outcome
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_10_outcome = roll_sum(lag(team_1_outcome, 1), n = 10, align = "right", fill=0))
+df$team_1_rolling_10_outcome <- df$team_1_rolling_10_outcome %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_10_outcome)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_10_outcome = roll_sum(lag(team_2_outcome, 1), n = 10, align = "right", fill=0))
+df$team_2_rolling_10_outcome <- df$team_2_rolling_10_outcome %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_10_outcome)
+
+#create rolling 10 match sum of for goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_10_forgoals = roll_sum(lag(team_1_goals, 1), n = 10, align = "right", fill=0))
+df$team_1_rolling_10_forgoals <- df$team_1_rolling_10_forgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_10_forgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_10_forgoals = roll_sum(lag(team_2_goals, 1), n = 10, align = "right", fill=0))
+df$team_2_rolling_10_forgoals <- df$team_2_rolling_10_forgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_10_forgoals)
+
+#create rolling 10 match sum of against goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_10_againstgoals = roll_sum(lag(team_2_goals, 1), n = 10, align = "right", fill=0))
+df$team_1_rolling_10_againstgoals <- df$team_1_rolling_10_againstgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_10_againstgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_10_againstgoals = roll_sum(lag(team_1_goals, 1), n = 10, align = "right", fill=0))
+df$team_2_rolling_10_againstgoals <- df$team_2_rolling_10_againstgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_10_againstgoals)
+
+#create win balance and goal balances (relative to team 1)
+df <- df %>% mutate(rolling_10_win_balance = team_1_rolling_10_outcome - team_2_rolling_10_outcome)
+df <- df %>% mutate(rolling_10_forgoal_balance = team_1_rolling_10_forgoals - team_2_rolling_10_forgoals)
+df <- df %>% mutate(rolling_10_againstgoal_balance = team_1_rolling_10_againstgoals - team_2_rolling_10_againstgoals)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_10_outcome, team_2_rolling_10_outcome, rolling_10_win_balance)
+```
+
+
+Create ranking & for/against goal count features for 20 game rolling
+
+```{r Create Features for 20 game rolling}
+#create rolling 20 match sum of outcome
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_20_outcome = roll_sum(lag(team_1_outcome, 1), n = 20, align = "right", fill=0))
+df$team_1_rolling_20_outcome <- df$team_1_rolling_20_outcome %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_20_outcome)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_20_outcome = roll_sum(lag(team_2_outcome, 1), n = 20, align = "right", fill=0))
+df$team_2_rolling_20_outcome <- df$team_2_rolling_20_outcome %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_20_outcome)
+
+#create rolling 20 match sum of for goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_20_forgoals = roll_sum(lag(team_1_goals, 1), n = 20, align = "right", fill=0))
+df$team_1_rolling_20_forgoals <- df$team_1_rolling_20_forgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_20_forgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_20_forgoals = roll_sum(lag(team_2_goals, 1), n = 20, align = "right", fill=0))
+df$team_2_rolling_20_forgoals <- df$team_2_rolling_20_forgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_20_forgoals)
+
+#create rolling 20 match sum of against goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_20_againstgoals = roll_sum(lag(team_2_goals, 1), n = 20, align = "right", fill=0))
+df$team_1_rolling_20_againstgoals <- df$team_1_rolling_20_againstgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_20_againstgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_20_againstgoals = roll_sum(lag(team_1_goals, 1), n = 20, align = "right", fill=0))
+df$team_2_rolling_20_againstgoals <- df$team_2_rolling_20_againstgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_20_againstgoals)
+
+#create win balance and goal balances (relative to team 1)
+df <- df %>% mutate(rolling_20_win_balance = team_1_rolling_20_outcome - team_2_rolling_20_outcome)
+df <- df %>% mutate(rolling_20_forgoal_balance = team_1_rolling_20_forgoals - team_2_rolling_20_forgoals)
+df <- df %>% mutate(rolling_20_againstgoal_balance = team_1_rolling_20_againstgoals - team_2_rolling_20_againstgoals)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_20_outcome, team_2_rolling_20_outcome, rolling_20_win_balance)
+```
+
+
+Create ranking & for/against goal count features for 50 game rolling
+
+```{r Create Features for 50 game rolling}
+#create rolling 10 match sum of outcome
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_50_outcome = roll_sum(lag(team_1_outcome, 1), n = 50, align = "right", fill=0))
+df$team_1_rolling_50_outcome <- df$team_1_rolling_50_outcome %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_50_outcome)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_50_outcome = roll_sum(lag(team_2_outcome, 1), n = 50, align = "right", fill=0))
+df$team_2_rolling_50_outcome <- df$team_2_rolling_50_outcome %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_50_outcome)
+
+#create rolling 50 match sum of for goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_50_forgoals = roll_sum(lag(team_1_goals, 1), n = 50, align = "right", fill=0))
+df$team_1_rolling_50_forgoals <- df$team_1_rolling_50_forgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_50_forgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_50_forgoals = roll_sum(lag(team_2_goals, 1), n = 50, align = "right", fill=0))
+df$team_2_rolling_50_forgoals <- df$team_2_rolling_50_forgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_50_forgoals)
+
+#create rolling 50 match sum of against goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_50_againstgoals = roll_sum(lag(team_2_goals, 1), n = 50, align = "right", fill=0))
+df$team_1_rolling_50_againstgoals <- df$team_1_rolling_50_againstgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_50_againstgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_50_againstgoals = roll_sum(lag(team_1_goals, 1), n = 50, align = "right", fill=0))
+df$team_2_rolling_50_againstgoals <- df$team_2_rolling_50_againstgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_50_againstgoals)
+
+#create win balance and goal balances (relative to team 1)
+df <- df %>% mutate(rolling_50_win_balance = team_1_rolling_50_outcome - team_2_rolling_50_outcome)
+df <- df %>% mutate(rolling_50_forgoal_balance = team_1_rolling_50_forgoals - team_2_rolling_50_forgoals)
+df <- df %>% mutate(rolling_50_againstgoal_balance = team_1_rolling_50_againstgoals - team_2_rolling_50_againstgoals)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_50_outcome, team_2_rolling_50_outcome, rolling_50_win_balance)
+```
+
+Create ranking & for/against goal count features for 100 game rolling
+
+```{r Create Features for 100 game rolling}
+#create rolling 10 match sum of outcome
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_100_outcome = roll_sum(lag(team_1_outcome, 1), n = 100, align = "right", fill=0))
+df$team_1_rolling_100_outcome <- df$team_1_rolling_100_outcome %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_100_outcome)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_100_outcome = roll_sum(lag(team_2_outcome, 1), n = 100, align = "right", fill=0))
+df$team_2_rolling_100_outcome <- df$team_2_rolling_100_outcome %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_100_outcome)
+
+#create rolling 100 match sum of for goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_100_forgoals = roll_sum(lag(team_1_goals, 1), n = 100, align = "right", fill=0))
+df$team_1_rolling_100_forgoals <- df$team_1_rolling_100_forgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_100_forgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_100_forgoals = roll_sum(lag(team_2_goals, 1), n = 100, align = "right", fill=0))
+df$team_2_rolling_100_forgoals <- df$team_2_rolling_100_forgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_100_forgoals)
+
+#create rolling 100 match sum of against goals
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_100_againstgoals = roll_sum(lag(team_2_goals, 1), n = 100, align = "right", fill=0))
+df$team_1_rolling_100_againstgoals <- df$team_1_rolling_100_againstgoals %>% replace_na(0)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_100_againstgoals)
+
+df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_100_againstgoals = roll_sum(lag(team_1_goals, 1), n = 100, align = "right", fill=0))
+df$team_2_rolling_100_againstgoals <- df$team_2_rolling_100_againstgoals %>% replace_na(0)
+#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_100_againstgoals)
+
+#create win balance and goal balances (relative to team 1)
+df <- df %>% mutate(rolling_100_win_balance = team_1_rolling_100_outcome - team_2_rolling_100_outcome)
+df <- df %>% mutate(rolling_100_forgoal_balance = team_1_rolling_100_forgoals - team_2_rolling_100_forgoals)
+df <- df %>% mutate(rolling_100_againstgoal_balance = team_1_rolling_100_againstgoals - team_2_rolling_100_againstgoals)
+#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_100_outcome, team_2_rolling_100_outcome, rolling_100_win_balance)
+```
+
+
+
+
+Create MLR Learner
+
+```{r Scratch pad for MLR dev}
+## 1) Define the task
+## Specify the type of analysis (e.g. classification) and provide data and response variable
+task = makeClassifTask(id = "football", data = df, target = "outcome")
+task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome"))
+
+n = nrow(df)
+train.set = sample(n, size = 2/3*n)
+test.set = setdiff(1:n, train.set)
+
+
+fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
+#fv = generateFilterValuesData(task, method=c("kruskal.test"))
+#fv = generateFilterValuesData(task, method=c("information.gain"))
+#fv = generateFilterValuesData(task, method=c("chi.squared"))
+plotFilterValues(fv, feat.type.cols = TRUE, n.show = 20)
+#fv$data %>% arrange(desc(information.gain)) 
+#plotFilterValuesGGVIS(fv)
+
+
+
+
+## 2) Define the learner
+## Choose a specific algorithm (e.g. linear discriminant analysis)
+lrn = makeLearner("classif.randomForest", predict.type = "prob")
+lrn
+
+
+
+## 3) Fit the model
+## Train the learner on the task using a random subset of the data as training set
+#single run
+parallelStartSocket(2)
+model = train(lrn, task, subset = train.set)
+parallelStop()
+
+#resampling run
+cv = makeResampleDesc(method = "GrowingWindowCV", horizon = 0.2, initial.window = 0.5, skip = 0.2)
+parallelStartSocket(3)
+r = resample(learner=lrn, task=task, resampling = cv, measures = logloss)
+parallelStop()
+
+
+str(rin)
+
+#Create Resampling Strategy (custom based on CV - create CV, replace indicies with fixed)
+cv = makeResampleDesc(method="CV", iters=4)
+rin = makeResampleInstance(cv, task=task)
+#World Cup 2002
+rin$train.inds[[1]] <- 1:2756
+rin$test.inds[[1]] <- 2757:2820
+#World Cup 2006
+rin$train.inds[[2]] <- 1:5688
+rin$test.inds[[2]] <- 5689:5752
+#World Cup 2010
+rin$train.inds[[3]] <- 1:8699
+rin$test.inds[[3]] <- 8700:8763
+#World Cup 2014
+rin$train.inds[[4]] <- 1:11806
+rin$test.inds[[4]] <- 11807:11870
+
+
+
+
+## 4) Make predictions
+## Predict values of the response variable for new observations by the trained model
+## using the other part of the data as test set
+#pred = predict(model, task = task, subset = test.set)
+pred = r$pred
+
+pred$time
+
+iter6 = r$pred$data %>% filter(iter==6) 
+
+probability_matrix = tibble(win=iter6$prob.win, draw=iter6$prob.draw, lose=iter6$prob.lose)
+probability_matrix <- as.matrix(probability_matrix)
+measureACC(iter6$truth, iter6$response)
+measureMMCE(iter6$truth, iter6$response)
+measureLogloss(probability_matrix, iter6$truth)
+
+
+## 5) Evaluate the learner
+## Calculate the mean misclassification error and accuracy
+perfmeasures <- performance(pred, measures = list(mmce, acc, logloss))
+perfmeasures
+calculateConfusionMatrix(pred)
+
+
+
+#> mmce  acc 
+#> 0.04 0.96
+```
+
+
+###Create ML
+
+```{r Create Task and configure Features}
+
+## 1) Define the task
+## Specify the type of analysis (e.g. classification) and provide data and response variable
+task = makeClassifTask(id = "football", data = df, target = "outcome")
+task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome"))
+
+fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
+#fv = generateFilterValuesData(task, method=c("kruskal.test"))
+#fv = generateFilterValuesData(task, method=c("information.gain"))
+#fv = generateFilterValuesData(task, method=c("chi.squared"))
+#fv = generateFilterValuesData(task, method=c("randomForest.importance"))
+#plotFilterValues(fv, feat.type.cols = TRUE, n.show = 20)
+fv$data %>% arrange(desc(information.gain)) 
+
+###Code to filter features here:
+#task = filterFeatures(task, method="information.gain", perc = 0.5) - made for worse accuracy
+
+```
+
+
+
+
+```{r Create the Learners}
+
+lrn.rf = makeLearner("classif.randomForest", predict.type = "prob")
+
+lrn.naiveBayes = makeLearner("classif.naiveBayes", predict.type = "prob")
+
+lrn.xgb = makeLearner("classif.xgboost", predict.type="prob", nrounds=10)
+
+
+```
+
+
+
+```{r Create the Resampling Strategy}
+
+#Create Resampling Strategy (custom based on CV - create CV, replace indicies with fixed numbers based on world cups)
+cv = makeResampleDesc(method="CV", iters=4)
+rin = makeResampleInstance(cv, task=task)
+#World Cup 2002
+rin$train.inds[[1]] <- 1:2756
+rin$test.inds[[1]] <- 2757:2820
+#World Cup 2006
+rin$train.inds[[2]] <- 1:5687
+rin$test.inds[[2]] <- 5688:5751
+#World Cup 2010
+rin$train.inds[[3]] <- 1:8698
+rin$test.inds[[3]] <- 8699:8762
+#World Cup 2014
+rin$train.inds[[4]] <- 1:11805
+rin$test.inds[[4]] <- 11806:11869
+
+```
+
+
+
+```{r Execute the Resampling Strategies to evaluate the learners}
+
+parallelStartSocket(3)
+resample.rf = resample(learner=lrn.rf, task=task, resampling = rin, measures = logloss)
+parallelStop()
+
+parallelStartSocket(3)
+resample.naiveBayes = resample(learner=lrn.naiveBayes, task=task, resampling = rin, measures = logloss)
+parallelStop()
+
+parallelStartSocket(3)
+resample.xgb = resample(learner=lrn.xgb, task=task, resampling = rin, measures = logloss)
+parallelStop()
+
+```
+
+
+```{r Evaluate the Learner}
+
+perfmeasures.rf <- performance(resample.rf$pred, measures = list(mmce, acc, logloss))
+perfmeasures.rf
+calculateConfusionMatrix(resample.rf$pred)
+
+perfmeasures.naiveBayes <- performance(resample.naiveBayes$pred, measures = list(mmce, acc, logloss))
+perfmeasures.naiveBayes
+calculateConfusionMatrix(resample.naiveBayes$pred)
+
+perfmeasures.xgb <- performance(resample.xgb$pred, measures = list(mmce, acc, logloss))
+perfmeasures.xgb
+calculateConfusionMatrix(resample.xgb$pred)
+
+
+
+```
+
+
+```{r Tune the learners}
+
+#xgboost
+xg_ps <- makeParamSet(
+makeIntegerParam("nrounds",lower=1,upper=200),
+makeIntegerParam("max_depth",lower=1,upper=20),
+makeNumericParam("lambda",lower=0,upper=200),
+makeNumericParam("eta", lower = 0, upper = 1)
+)
+
+parallelStartSocket(3)
+xg_tc = makeTuneControlMBO(budget=100)
+xg_tr = tuneParams(learner = lrn.xgb, task = task, resampling = rin, measures = logloss, control=xg_tc, par.set = xg_ps)
+parallelStop()
+
+lrn.xgb = setHyperPars(lrn.xgb, par.vals = xg_tr$x)
+
+
+#randomForest
+rf_ps <- makeParamSet(
+makeIntegerParam("ntree",lower = 50, upper = 500),
+makeIntegerParam("mtry", lower = 3, upper = 10),
+makeIntegerParam("nodesize", lower = 10, upper = 50)
+) 
+
+parallelStartSocket(3)
+rf_tc = makeTuneControlMBO(budget=100)
+rf_tr = tuneParams(learner = lrn.rf, task = task, resampling = rin, measures = logloss, control=rf_tc, par.set = rf_ps)
+parallelStop()
+
+lrn.rf = setHyperPars(lrn.rf, par.vals = rf_tr$x)
+```
+
+
+Notes for next work:
+
+tuning & stacking
+make the base learners
+make a list of the base learners
+make the stacked learner
+make a paramset containing all the tune targets (addressed with learner.name.paramname)
+make the tunecontrolMBO object
+run tuneparams on the stacked learner
+set hyperparams on the stacked learner
+resample on the stacked learner
+evaluate the stacked learner
+
+https://github.com/mlr-org/mlr/issues/1266
+
+
+
+
+
+```{r Construct iteration log}
+
+# logtable <- tibble("comments" = "baseline", "learner" = "random chance", "mmce" = random_mmce, "accuracy" = random_accuracy, "logloss" = random_logloss)
+# logtable <- logtable %>% add_row(comments = "baseline, wold cup games only", learner = "random chance", mmce = random_mmce_wc, accuracy = random_accuracy_wc, logloss = random_logloss_wc)
+# logtable <- logtable %>% add_row(comments="basic dataset, teams encoded", learner = "randomforest", mmce = 0.455313, accuracy = 0.544687, logloss = 1.006555)
+# logtable <- logtable %>% add_row(comments="2,5,10 period stats, no teams", learner = "randomforest", mmce = 0.4757002, accuracy = 0.5242998, logloss = 0.9946741)
+# logtable <- logtable %>% add_row(comments="as per last with team index in", learner = "randomforest", mmce = 0.4639621, accuracy = 0.5360379, logloss = 0.9701575)
+# logtable <- logtable %>% add_row(comments="as per last 20,50,100 period stats", learner = "randomforest", mmce = 0.4616969, accuracy = 0.5383031, logloss = 0.9619034)
+# logtable <- logtable %>% add_row(comments="growingwindow resample (0.5 by 0.2, 6 iter), all predictions", learner = "randomforest", mmce = 0.4462366, accuracy = 0.5537634, logloss = 0.9539681)
+# logtable <- logtable %>% add_row(comments="growingwindow resample (0.5 by 0.2, 6 iter), last 10% only", learner = "randomforest", mmce = 0.4420041, accuracy = 0.5579959, logloss = 0.9346354)
+
+logtablewc <- tibble("comments" = "baseline, world cup games only", "CV" = "none",  "learner" = "random chance", "mmce" = random_mmce_wc, "accuracy" = random_accuracy_wc, "logloss" = random_logloss_wc)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset", CV = "4 x world cup rounds only, growing window", learner = "randomforest", mmce = 0.5078125, accuracy = 0.4921875, logloss = 1.0352575)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, filtered for 50% features by info gain", CV = "4 x world cup rounds only, growing window", learner = "randomforest", mmce = 0.5039062, accuracy = 0.4960938, logloss = 1.0430265)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "naiveBayes", mmce = 0.6289062, accuracy = 0.3710938, logloss = 13.0365419)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "xgBoost untuned, rounds =1", mmce = 0.531250, accuracy = 0.468750, logloss = 1.067194)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "xgBoost untuned, rounds=250", mmce = 0.5390625, accuracy = 0.4609375, logloss = 1.4447695)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "xgBoost untuned, rounds=10", mmce = 0.5507812, accuracy = 0.4492188, logloss = 1.0424440)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "xgBoost tuned", mmce = 0.4726562, accuracy = 0.5273438, logloss = 0.9890529)
+logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.4804688, accuracy = 0.5195312, logloss = 1.0265465)
+```
+
