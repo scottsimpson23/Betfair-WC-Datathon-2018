@@ -170,6 +170,7 @@ Scratch Pad
 
 ```{r Scratch Pad}
 
+
 #create list of unique countries - already have it, team_list
 team_list_small <- list("England", "France", "Spain")
 
@@ -197,8 +198,16 @@ create_team_outcome_columns <- function(team_name) {
 
 create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_outcome,team_2_outcome, England_outcome) %>% head
 
+#create list of unique countries - already have it, team_list
+
+
+team <- "England"
+
 
 test_out_frame <- team_list_small %>% lmap(create_team_outcome_columns)
+
+df %>% filter(team_1 == "England" | team_2 == "England") %>% mutate(!!paste(team, "_goals", sep="") := ifelse(team_1 == "England", team_1_goals, team_2_goals)) %>% select(team_1, team_2, team_1_goals,team_2_goals, England_goals) %>% head()
+
 
 
 !!paste(team, "_goals", sep="")
