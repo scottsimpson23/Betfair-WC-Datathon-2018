@@ -235,13 +235,42 @@ create_team_outcome_columns <- function(team_name) {
   
 }
 
+#use lmap to apply the function to each list item, returning three columns for each list item bound into a tbl
 temp_out_frame <- team_list$value %>% lmap(create_team_outcome_columns) 
+#add this to the main dataframe
 df <- cbind(df, temp_out_frame)
+#clean up
 rm(temp_out_frame)
 
 
 
 ```
+
+
+```{r Scratchpad for writing rolling features logic}
+
+#create a 2 period conditional rolling sum for one team
+
+team_name <- "England"
+df %>% mutate(temp_outcome = if_else(team_1 == team_name, !!paste(team_name, "_outcome", sep=""), 
+                                    ifelse(team_2 == team_name, paste(team_name, "_outcome", sep=""), 0))) %>%
+  select(team_1, team_2, paste(team_name, "_outcome", sep=""), temp_outcome) %>%
+  filter(team_1 == "England" | team_2 == "England")
+
+########Stuck here, try http://adv-r.had.co.nz/Computing-on-the-language.html
+
+df %>% select(paste(team_name, "_outcome", sep=""))
+
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_outcome = roll_sum(lag(team_1_outcome, 1), n = 2, align = "right", fill=0))
+df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
+
+
+
+
+```
+
+
+
 
 
 ###Feature Engineering
