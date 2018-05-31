@@ -5,7 +5,7 @@ output: html_notebook
 
 This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*.  
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
@@ -95,7 +95,7 @@ df <- df %>% mutate(team_2_index = as.integer(team_2))
 
 
 #clean up
-rm(team_list)
+#rm(team_list)  #used later
 rm(team_list1)
 rm(team_list2)
 
@@ -169,27 +169,39 @@ rm(random_loss_prob)
 Scratch Pad
 
 ```{r Scratch Pad}
-df %>% group_by(year,tournament)  %>%  count() %>% arrange(year)
 
-summarizeColumns(df)
+#create list of unique countries - already have it, team_list
+team_list_small <- list("England", "France", "Spain")
 
-rin$train.inds[[1]] <- 1:2754
-rin$test.inds[[1]] <- 2755:2818
-#World Cup 2006
-rin$train.inds[[2]] <- 1:5687
-rin$test.inds[[2]] <- 5688:5751
-#World Cup 2010
-rin$train.inds[[3]] <- 1:8698
-rin$test.inds[[3]] <- 8699:8762
-#World Cup 2014
-rin$train.inds[[4]] <- 1:11805
-rin$test.inds[[4]] <- 11806:11869
+team <- "England"
 
-df %>% slice(c(11806,11869)) %>% select(team_1, team_2, tournament)
+df %>% filter(team_1 == "England" | team_2 == "England") %>% 
+  mutate(!!paste(team, "_goals", sep="") := ifelse(team_1 == "England", team_1_goals, team_2_goals)) #%>% 
+  #select(team_1, team_2, team_1_goals,team_2_goals, England_goals) %>% head()
+
+df %>% filter(team_1 == "England" | team_2 == "England") %>% 
+  mutate(!!paste(team, "_outcome", sep="") := ifelse(team_1 == "England", team_1_outcome, team_2_outcome)) %>% 
+  select(team_1, team_2, team_1_outcome,team_2_outcome, England_outcome) %>% head()
+
+create_team_outcome_columns <- function(team_name) {
+  
+  #Create column called team_name_goals with the goals scored by that team in each match
+  df %>% filter(team_1 == team_name | team_2 == team_name ) %>% 
+  mutate(!!paste(team_name, "_goals", sep="") := ifelse(team_1 == team_name, team_1_goals, team_2_goals))
+  
+  #Create column called team_name_outcome with the game outcome by that team in each match
+  df %>% filter(team_1 == team_name | team_2 == team_name ) %>% 
+  mutate(!!paste(team_name, "_outcome", sep="") := ifelse(team_1 == team_name, team_1_outcome, team_2_outcome))
+  
+}
+
+create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_outcome,team_2_outcome, England_outcome) %>% head
 
 
+test_out_frame <- team_list_small %>% lmap(create_team_outcome_columns)
 
 
+!!paste(team, "_goals", sep="")
 ```
 
 
