@@ -184,33 +184,63 @@ df %>% filter(team_1 == "England" | team_2 == "England") %>%
   mutate(!!paste(team, "_outcome", sep="") := ifelse(team_1 == "England", team_1_outcome, team_2_outcome)) %>% 
   select(team_1, team_2, team_1_outcome,team_2_outcome, England_outcome) %>% head()
 
-create_team_outcome_columns <- function(team_name) {
-  
-  #Create column called team_name_goals with the goals scored by that team in each match
-  df %>% filter(team_1 == team_name | team_2 == team_name ) %>% 
-  mutate(!!paste(team_name, "_goals", sep="") := ifelse(team_1 == team_name, team_1_goals, team_2_goals))
-  
-  #Create column called team_name_outcome with the game outcome by that team in each match
-  df %>% filter(team_1 == team_name | team_2 == team_name ) %>% 
-  mutate(!!paste(team_name, "_outcome", sep="") := ifelse(team_1 == team_name, team_1_outcome, team_2_outcome))
-  
-}
 
-create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_outcome,team_2_outcome, England_outcome) %>% head
+
+
+create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_outcome, team_2_outcome, England_outcome) %>%
+  filter(team_1 == "England" | team_2 == "England") %>% head
+
+create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_goals, team_2_goals, England_goals) %>%
+  filter(team_1 == "England" | team_2 == "England") %>% head
+
+create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_goals, team_2_goals, England_opponent_goals) %>%
+  filter(team_1 == "England" | team_2 == "England") %>% head
 
 #create list of unique countries - already have it, team_list
 
 
 team <- "England"
 
-
-test_out_frame <- team_list_small %>% lmap(create_team_outcome_columns)
-
-df %>% filter(team_1 == "England" | team_2 == "England") %>% mutate(!!paste(team, "_goals", sep="") := ifelse(team_1 == "England", team_1_goals, team_2_goals)) %>% select(team_1, team_2, team_1_goals,team_2_goals, England_goals) %>% head()
+rm(test_out_frame)
 
 
+test_out_frame %>% filter(team_1 == "England" | team_2 == "England") %>% 
+  select(team_1, team_2, contains("goals")) %>% head()
 
-!!paste(team, "_goals", sep="")
+levels(team_list$value) %>% head()
+
+
+```
+
+
+
+```{r Create country specific columns for outcome and for/against goals}
+
+create_team_outcome_columns <- function(team_name) {
+
+    #Create column called team_name_outcome with the outcome by that team in each match
+  return_value <- df %>% mutate(!!paste(team_name, "_outcome", sep="") := 
+                  ifelse(team_1 == team_name, team_1_outcome, ifelse(team_2 == team_name, team_2_outcome, 0))) %>%
+    select(!!paste(team_name, "_outcome", sep="")) 
+  
+  #Create column called team_name_goals with the goals scored by that team in each match
+  return_value <- df %>% mutate(!!paste(team_name, "_goals", sep="") := 
+                  ifelse(team_1 == team_name, team_1_goals, ifelse(team_2 == team_name, team_2_goals, 0))) %>%  
+    select(!!paste(team_name, "_goals", sep="")) %>% cbind(return_value)
+  
+  #Create column called team_name_opponent_goals with the goals scored by the opposition team in each match
+  return_value <- df %>% mutate(!!paste(team_name, "_opponent_goals", sep="") := 
+                  ifelse(team_1 == team_name, team_2_goals, ifelse(team_2 == team_name, team_1_goals, 0))) %>%
+    select(!!paste(team_name, "_opponent_goals", sep="")) %>% cbind(return_value)
+  
+}
+
+temp_out_frame <- team_list$value %>% lmap(create_team_outcome_columns) 
+df <- cbind(df, temp_out_frame)
+rm(temp_out_frame)
+
+
+
 ```
 
 
