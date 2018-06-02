@@ -288,266 +288,103 @@ df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
 
 ```
 
-```{r Rolling Features Logic}
+```{r Rolling Features Logic, message=FALSE}
 
-create_match_specific_columns <- function(team_name, rolling_window) {
-  
-  #setup column names
-  outcome_column = paste(team_name, "_outcome_stage", sep="")
-  forgoals_column = paste(team_name, "_goals_stage", sep="")
-  againstgoals_column = paste(team_name, "_opponentgoals_stage", sep="")
-  
-  
-  temp_outcome <- df %>% mutate(temp_outcome := roll_sum(if_else(team_1 == team_name, !!rlang::sym(column_name), 
-                                    ifelse(team_2 == team_name, !!rlang::sym(column_name), 0)), n = rolling_window,
-                                    align = "right", fill = 0)) 
+
+create_rolling_sums_by_team <- function (team_name, rolling_window){
+
+  #apply filter to get contiguous run of team_name outcomes, then apply rolling sum to it
+  col_name = paste(team_name, "_", rolling_window, "_rolling_outcome_stage", sep="")
+  temp_frame <- df %>% 
+    filter(team_1 == !!team_name | team_2 == !!team_name) %>%
+    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_outcome_stage", sep="")),1), n = rolling_window, align = "right", fill = 0)) %>%
+    select(team_1, team_2, days, !!col_name)
+  #Join to the unfiltered dataset
+  return_value <- df %>% 
+    left_join(temp_frame) %>% 
+    select(!!col_name) %>%
+    replace(is.na(.), 0)
+
+  #repeat for rolling for goals
+  col_name = paste(team_name, "_", rolling_window, "_rolling_goals_stage", sep="")
+  temp_frame <- df %>%
+    mutate(!!col_name := 0) %>%
+    filter(team_1 == !!team_name | team_2 == !!team_name) %>%
+    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_goals_stage", sep="")),1), n = rolling_window, align = "right", fill = 0))  %>%
+    select(team_1, team_2, days, !!col_name)
+  #Join to the unfiltered dataset  
+  return_value <- df %>% 
+    left_join(temp_frame) %>% 
+    select(!!col_name) %>%
+    replace(is.na(.), 0) %>%
+    cbind(return_value)
+
+  #repeat for rolling against goals
+  col_name = paste(team_name, "_", rolling_window, "_rolling_opponentgoals_stage", sep="")
+  temp_frame <- df %>%
+    mutate(!!col_name := 0) %>%
+    filter(team_1 == !!team_name | team_2 == !!team_name) %>%
+    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_opponentgoals_stage", sep="")),1), n = rolling_window, align = "right", fill = 0)) %>%
+    select(team_1, team_2, days, !!col_name)
+  #Join to the unfiltered dataset  
+  return_value <- df %>% 
+    left_join(temp_frame) %>% 
+    select(!!col_name) %>%
+    replace(is.na(.), 0) %>%
+    cbind(return_value)
   
 }
 
 
+parallelStartSocket(3)
+for(numb in c(2,5,10,20,50)) {
 
-create_match_specific_columns("England", 2) %>%
-  select(team_1, team_2, !!column_name, temp_outcome) %>%  
-  filter(team_1 == "England" | team_2 == "England") %>%
-  head
+  #use lmap to apply the function to each list item, returning three columns for each list item bound into a tbl
+  temp_out_frame <- team_list$value %>% lmap(~create_rolling_sums_by_team(.x, rolling_window = numb)) 
+  
+  #grab each set of metrics (outcomes, goals, opponentgoals) and sum each row to generate the match specific columns
+  
+  temp_out_frame <- as.tibble(temp_out_frame)
+
+  staging_frame <- temp_out_frame %>% select(ends_with(paste(numb,"_rolling_outcome_stage", sep=""))) %>%
+  mutate(!!paste("match_",numb,"_rolling_outcome",sep="") := rowSums(.)) %>%
+  select(!!paste("match_",numb,"_rolling_outcome",sep="")) 
+  
+  staging_frame <- temp_out_frame %>% select(ends_with(paste(numb,"_rolling_goals_stage", sep=""))) %>%
+  mutate(!!paste("match_",numb,"_rolling_goals",sep="") := rowSums(.)) %>%
+  select(!!paste("match_",numb,"_rolling_goals",sep="")) %>%
+  cbind(staging_frame)
+  
+  staging_frame <- temp_out_frame %>% select(ends_with(paste(numb,"_rolling_opponentgoals_stage", sep=""))) %>%
+  mutate(!!paste("match_",numb,"_rolling_opponentgoals",sep="") := rowSums(.)) %>%
+  select(!!paste("match_",numb,"_rolling_opponentgoals",sep="")) %>%
+  cbind(staging_frame)
+  
+  #staging_frame %>% tail(20)
+  
+  #add this to the main dataframe
+  df <- cbind(df, staging_frame)
+
+}
+parallelStop()
 
 
-#next steps - create rolling N for each team into a DF. Merge this into team1-2 specific columns by above code & rowsum
+df %>% select(team_1, team_2, team_1_goals, team_2_goals, England_outcome_stage, match_2_rolling_outcome, match_5_rolling_outcome)  %>% 
+  filter(team_1 == "England" | team_2 == "England") %>% tail(20)
+
+
+#clean up
+#rm(temp_out_frame)
+#rm(staging_frame)
+
+
 
 ```
 
 
+```{r Create ELO metrics}
 
-
-###Feature Engineering
-
-Create ranking & for/against goal count features for 2 game rolling
-
-```{r Create Features for 2 game rolling}
-
-
-#create rolling 2 match sum of outcome
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_outcome = roll_sum(lag(team_1_outcome, 1), n = 2, align = "right", fill=0))
-df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_2_outcome)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_2_outcome = roll_sum(lag(team_2_outcome, 1), n = 2, align = "right", fill=0))
-df$team_2_rolling_2_outcome <- df$team_2_rolling_2_outcome %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_2_outcome)
-
-#create rolling 2 match sum of for goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_forgoals = roll_sum(lag(team_1_goals, 1), n = 2, align = "right", fill=0))
-df$team_1_rolling_2_forgoals <- df$team_1_rolling_2_forgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_2_forgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_2_forgoals = roll_sum(lag(team_2_goals, 1), n = 2, align = "right", fill=0))
-df$team_2_rolling_2_forgoals <- df$team_2_rolling_2_forgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_2_forgoals)
-
-#create rolling 2 match sum of against goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_againstgoals = roll_sum(lag(team_2_goals, 1), n = 2, align = "right", fill=0))
-df$team_1_rolling_2_againstgoals <- df$team_1_rolling_2_againstgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_2_againstgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_2_againstgoals = roll_sum(lag(team_1_goals, 1), n = 2, align = "right", fill=0))
-df$team_2_rolling_2_againstgoals <- df$team_2_rolling_2_againstgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_2_againstgoals)
-
-#create win balance and goal balances (relative to team 1)
-df <- df %>% mutate(rolling_2_win_balance = team_1_rolling_2_outcome - team_2_rolling_2_outcome)
-df <- df %>% mutate(rolling_2_forgoal_balance = team_1_rolling_2_forgoals - team_2_rolling_2_forgoals)
-df <- df %>% mutate(rolling_2_againstgoal_balance = team_1_rolling_2_againstgoals - team_2_rolling_2_againstgoals)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_2_outcome, team_2_rolling_2_outcome, rolling_2_win_balance)
 ```
-
-
-Create ranking & for/against goal count features for 5 game rolling
-
-```{r Create Features for 5 game rolling}
-#create rolling 5 match sum of outcome
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_5_outcome = roll_sum(lag(team_1_outcome, 1), n = 5, align = "right", fill=0))
-df$team_1_rolling_5_outcome <- df$team_1_rolling_5_outcome %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_5_outcome)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_5_outcome = roll_sum(lag(team_2_outcome, 1), n = 5, align = "right", fill=0))
-df$team_2_rolling_5_outcome <- df$team_2_rolling_5_outcome %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_5_outcome)
-
-#create rolling 5 match sum of for goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_5_forgoals = roll_sum(lag(team_1_goals, 1), n = 5, align = "right", fill=0))
-df$team_1_rolling_5_forgoals <- df$team_1_rolling_5_forgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_5_forgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_5_forgoals = roll_sum(lag(team_2_goals, 1), n = 5, align = "right", fill=0))
-df$team_2_rolling_5_forgoals <- df$team_2_rolling_5_forgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_5_forgoals)
-
-#create rolling 5 match sum of against goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_5_againstgoals = roll_sum(lag(team_2_goals, 1), n = 5, align = "right", fill=0))
-df$team_1_rolling_5_againstgoals <- df$team_1_rolling_5_againstgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_5_againstgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_5_againstgoals = roll_sum(lag(team_1_goals, 1), n = 5, align = "right", fill=0))
-df$team_2_rolling_5_againstgoals <- df$team_2_rolling_5_againstgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_5_againstgoals)
-
-#create win balance and goal balances (relative to team 1)
-df <- df %>% mutate(rolling_5_win_balance = team_1_rolling_5_outcome - team_2_rolling_5_outcome)
-df <- df %>% mutate(rolling_5_forgoal_balance = team_1_rolling_5_forgoals - team_2_rolling_5_forgoals)
-df <- df %>% mutate(rolling_5_againstgoal_balance = team_1_rolling_5_againstgoals - team_2_rolling_5_againstgoals)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_5_outcome, team_2_rolling_5_outcome, rolling_5_win_balance)
-```
-
-Create ranking & for/against goal count features for 10 game rolling
-
-```{r Create Features for 10 game rolling}
-#create rolling 10 match sum of outcome
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_10_outcome = roll_sum(lag(team_1_outcome, 1), n = 10, align = "right", fill=0))
-df$team_1_rolling_10_outcome <- df$team_1_rolling_10_outcome %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_10_outcome)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_10_outcome = roll_sum(lag(team_2_outcome, 1), n = 10, align = "right", fill=0))
-df$team_2_rolling_10_outcome <- df$team_2_rolling_10_outcome %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_10_outcome)
-
-#create rolling 10 match sum of for goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_10_forgoals = roll_sum(lag(team_1_goals, 1), n = 10, align = "right", fill=0))
-df$team_1_rolling_10_forgoals <- df$team_1_rolling_10_forgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_10_forgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_10_forgoals = roll_sum(lag(team_2_goals, 1), n = 10, align = "right", fill=0))
-df$team_2_rolling_10_forgoals <- df$team_2_rolling_10_forgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_10_forgoals)
-
-#create rolling 10 match sum of against goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_10_againstgoals = roll_sum(lag(team_2_goals, 1), n = 10, align = "right", fill=0))
-df$team_1_rolling_10_againstgoals <- df$team_1_rolling_10_againstgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_10_againstgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_10_againstgoals = roll_sum(lag(team_1_goals, 1), n = 10, align = "right", fill=0))
-df$team_2_rolling_10_againstgoals <- df$team_2_rolling_10_againstgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_10_againstgoals)
-
-#create win balance and goal balances (relative to team 1)
-df <- df %>% mutate(rolling_10_win_balance = team_1_rolling_10_outcome - team_2_rolling_10_outcome)
-df <- df %>% mutate(rolling_10_forgoal_balance = team_1_rolling_10_forgoals - team_2_rolling_10_forgoals)
-df <- df %>% mutate(rolling_10_againstgoal_balance = team_1_rolling_10_againstgoals - team_2_rolling_10_againstgoals)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_10_outcome, team_2_rolling_10_outcome, rolling_10_win_balance)
-```
-
-
-Create ranking & for/against goal count features for 20 game rolling
-
-```{r Create Features for 20 game rolling}
-#create rolling 20 match sum of outcome
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_20_outcome = roll_sum(lag(team_1_outcome, 1), n = 20, align = "right", fill=0))
-df$team_1_rolling_20_outcome <- df$team_1_rolling_20_outcome %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_20_outcome)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_20_outcome = roll_sum(lag(team_2_outcome, 1), n = 20, align = "right", fill=0))
-df$team_2_rolling_20_outcome <- df$team_2_rolling_20_outcome %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_20_outcome)
-
-#create rolling 20 match sum of for goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_20_forgoals = roll_sum(lag(team_1_goals, 1), n = 20, align = "right", fill=0))
-df$team_1_rolling_20_forgoals <- df$team_1_rolling_20_forgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_20_forgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_20_forgoals = roll_sum(lag(team_2_goals, 1), n = 20, align = "right", fill=0))
-df$team_2_rolling_20_forgoals <- df$team_2_rolling_20_forgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_20_forgoals)
-
-#create rolling 20 match sum of against goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_20_againstgoals = roll_sum(lag(team_2_goals, 1), n = 20, align = "right", fill=0))
-df$team_1_rolling_20_againstgoals <- df$team_1_rolling_20_againstgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_20_againstgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_20_againstgoals = roll_sum(lag(team_1_goals, 1), n = 20, align = "right", fill=0))
-df$team_2_rolling_20_againstgoals <- df$team_2_rolling_20_againstgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_20_againstgoals)
-
-#create win balance and goal balances (relative to team 1)
-df <- df %>% mutate(rolling_20_win_balance = team_1_rolling_20_outcome - team_2_rolling_20_outcome)
-df <- df %>% mutate(rolling_20_forgoal_balance = team_1_rolling_20_forgoals - team_2_rolling_20_forgoals)
-df <- df %>% mutate(rolling_20_againstgoal_balance = team_1_rolling_20_againstgoals - team_2_rolling_20_againstgoals)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_20_outcome, team_2_rolling_20_outcome, rolling_20_win_balance)
-```
-
-
-Create ranking & for/against goal count features for 50 game rolling
-
-```{r Create Features for 50 game rolling}
-#create rolling 10 match sum of outcome
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_50_outcome = roll_sum(lag(team_1_outcome, 1), n = 50, align = "right", fill=0))
-df$team_1_rolling_50_outcome <- df$team_1_rolling_50_outcome %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_50_outcome)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_50_outcome = roll_sum(lag(team_2_outcome, 1), n = 50, align = "right", fill=0))
-df$team_2_rolling_50_outcome <- df$team_2_rolling_50_outcome %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_50_outcome)
-
-#create rolling 50 match sum of for goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_50_forgoals = roll_sum(lag(team_1_goals, 1), n = 50, align = "right", fill=0))
-df$team_1_rolling_50_forgoals <- df$team_1_rolling_50_forgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_50_forgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_50_forgoals = roll_sum(lag(team_2_goals, 1), n = 50, align = "right", fill=0))
-df$team_2_rolling_50_forgoals <- df$team_2_rolling_50_forgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_50_forgoals)
-
-#create rolling 50 match sum of against goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_50_againstgoals = roll_sum(lag(team_2_goals, 1), n = 50, align = "right", fill=0))
-df$team_1_rolling_50_againstgoals <- df$team_1_rolling_50_againstgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_50_againstgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_50_againstgoals = roll_sum(lag(team_1_goals, 1), n = 50, align = "right", fill=0))
-df$team_2_rolling_50_againstgoals <- df$team_2_rolling_50_againstgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_50_againstgoals)
-
-#create win balance and goal balances (relative to team 1)
-df <- df %>% mutate(rolling_50_win_balance = team_1_rolling_50_outcome - team_2_rolling_50_outcome)
-df <- df %>% mutate(rolling_50_forgoal_balance = team_1_rolling_50_forgoals - team_2_rolling_50_forgoals)
-df <- df %>% mutate(rolling_50_againstgoal_balance = team_1_rolling_50_againstgoals - team_2_rolling_50_againstgoals)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_50_outcome, team_2_rolling_50_outcome, rolling_50_win_balance)
-```
-
-Create ranking & for/against goal count features for 100 game rolling
-
-```{r Create Features for 100 game rolling}
-#create rolling 10 match sum of outcome
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_100_outcome = roll_sum(lag(team_1_outcome, 1), n = 100, align = "right", fill=0))
-df$team_1_rolling_100_outcome <- df$team_1_rolling_100_outcome %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_outcome, team_1_rolling_100_outcome)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_100_outcome = roll_sum(lag(team_2_outcome, 1), n = 100, align = "right", fill=0))
-df$team_2_rolling_100_outcome <- df$team_2_rolling_100_outcome %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_outcome, team_2_rolling_100_outcome)
-
-#create rolling 100 match sum of for goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_100_forgoals = roll_sum(lag(team_1_goals, 1), n = 100, align = "right", fill=0))
-df$team_1_rolling_100_forgoals <- df$team_1_rolling_100_forgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_goals, team_1_rolling_100_forgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_100_forgoals = roll_sum(lag(team_2_goals, 1), n = 100, align = "right", fill=0))
-df$team_2_rolling_100_forgoals <- df$team_2_rolling_100_forgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_2_goals, team_2_rolling_100_forgoals)
-
-#create rolling 100 match sum of against goals
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_100_againstgoals = roll_sum(lag(team_2_goals, 1), n = 100, align = "right", fill=0))
-df$team_1_rolling_100_againstgoals <- df$team_1_rolling_100_againstgoals %>% replace_na(0)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_2_goals, team_1_rolling_100_againstgoals)
-
-df <- df %>% group_by(team_2) %>% mutate(team_2_rolling_100_againstgoals = roll_sum(lag(team_1_goals, 1), n = 100, align = "right", fill=0))
-df$team_2_rolling_100_againstgoals <- df$team_2_rolling_100_againstgoals %>% replace_na(0)
-#df %>% filter(team_2 == "England") %>% select(team_1, team_2, team_1_goals, team_2_rolling_100_againstgoals)
-
-#create win balance and goal balances (relative to team 1)
-df <- df %>% mutate(rolling_100_win_balance = team_1_rolling_100_outcome - team_2_rolling_100_outcome)
-df <- df %>% mutate(rolling_100_forgoal_balance = team_1_rolling_100_forgoals - team_2_rolling_100_forgoals)
-df <- df %>% mutate(rolling_100_againstgoal_balance = team_1_rolling_100_againstgoals - team_2_rolling_100_againstgoals)
-#df %>% filter(team_1 == "England") %>% select(team_1, team_2, team_1_rolling_100_outcome, team_2_rolling_100_outcome, rolling_100_win_balance)
-```
-
 
 
 
