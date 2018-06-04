@@ -342,13 +342,14 @@ for(numb in c(2,5,10,20,50)) {
   #use lmap to apply the function to each list item, returning three columns for each list item bound into a tbl
   temp_out_frame <- team_list$value %>% lmap(~create_rolling_sums_by_team(.x, rolling_window = numb)) 
   
-  #grab each set of metrics (outcomes, goals, opponentgoals) and sum each row to generate the match specific columns
+  #for each set of metrics (outcomes, goals, opponentgoals) 
   
   temp_out_frame <- as.tibble(temp_out_frame)
 
-  staging_frame <- temp_out_frame %>% select(ends_with(paste(numb,"_rolling_outcome_stage", sep=""))) %>%
-  mutate(!!paste("match_",numb,"_rolling_outcome",sep="") := rowSums(.)) %>%
-  select(!!paste("match_",numb,"_rolling_outcome",sep="")) 
+  staging_frame <- temp_out_frame %>% 
+    select(ends_with(paste(numb,"_rolling_outcome_stage", sep=""))) %>%
+    mutate(!!paste("match_",numb,"_rolling_outcome",sep="") := rowSums(.)) %>%
+    select(!!paste("match_",numb,"_rolling_outcome",sep="")) 
   
   staging_frame <- temp_out_frame %>% select(ends_with(paste(numb,"_rolling_goals_stage", sep=""))) %>%
   mutate(!!paste("match_",numb,"_rolling_goals",sep="") := rowSums(.)) %>%
@@ -368,6 +369,13 @@ for(numb in c(2,5,10,20,50)) {
 }
 parallelStop()
 
+# to create team_1_rolling_2_outcom I need to 
+# group by team_1
+# assign team_1s 
+
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_outcome = roll_sum(lag(team_1_outcome, 1), n = 2, align = "right", fill=0))
+df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
+
 
 df %>% select(team_1, team_2, team_1_goals, team_2_goals, England_outcome_stage, match_2_rolling_outcome, match_5_rolling_outcome)  %>% 
   filter(team_1 == "England" | team_2 == "England") %>% tail(20)
@@ -379,10 +387,57 @@ df %>% select(team_1, team_2, team_1_goals, team_2_goals, England_outcome_stage,
 
 
 
+tst <- tibble(res = rep(0,6), grp = c("a","a","b","b","c", "c"), a = rep(2,6), b = rep(8,6), c=rep(16,6))
+tst
+
+lst <-  unique(tst$grp)
+
+for(g in lst) {
+  
+  
+  tstout <- tst %>% mutate(res = ifelse(grp == g, !!rlang::sym(g),0))
+  
+}
+
+g = "a"
+tst %>% mutate(res = ifelse(grp == g, !!rlang::sym(g), 0))
+
+
+tst
+tstout
+
+
+tst %>% rowwise() %>% mutate(res := !!rlang::sym(paste(grp)))
+
+tst %>%
+  group_by(grp) %>%
+  mutate_(res = grp)
+
+
+
+
 ```
 
 
 ```{r Create ELO metrics}
+
+# determine base K from lookup table (inner join on k value table)
+# insert game index integer
+# 
+# set first row to 1311 (current median) OR initialise to 1998 closing rating?  OR 1388 (1998 closing rating median)
+# 
+# for each game in game index {
+#   
+#   calculate K value based on goal difference 
+#   
+#   set Rn to Rn-1 for all countries (use game index integer)
+#   
+#   calculate We from difference in rating for each team
+#   
+#   calculate Rn and write into column for each team
+#   
+# 
+# }
 
 ```
 

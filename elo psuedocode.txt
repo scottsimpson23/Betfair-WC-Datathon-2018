@@ -1,0 +1,17 @@
+determine base K from lookup table (inner join on k value table)
+insert game index integer
+
+set first row to 1311 (current median) OR initialise to 1998 closing rating?  OR 1388 (1998 closing rating median)
+
+for each game in game index {
+  
+  calculate K value based on goal difference 
+  
+  set Rn to Rn-1 for all countries (use game index integer)
+  
+  calculate We from difference in rating for each team
+  
+  calculate Rn and write into column for each team
+  
+
+}
