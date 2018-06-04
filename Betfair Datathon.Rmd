@@ -373,13 +373,7 @@ parallelStop()
 # group by team_1
 # assign team_1s 
 
-df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_outcome = roll_sum(lag(team_1_outcome, 1), n = 2, align = "right", fill=0))
-df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
-
-
-df %>% select(team_1, team_2, team_1_goals, team_2_goals, England_outcome_stage, match_2_rolling_outcome, match_5_rolling_outcome)  %>% 
-  filter(team_1 == "England" | team_2 == "England") %>% tail(20)
-
+#####I am here
 
 #clean up
 #rm(temp_out_frame)
@@ -391,29 +385,18 @@ tst <- tibble(res = rep(0,6), grp = c("a","a","b","b","c", "c"), a = rep(2,6), b
 tst
 
 lst <-  unique(tst$grp)
+tstout <- tst
 
 for(g in lst) {
-  
-  
-  tstout <- tst %>% mutate(res = ifelse(grp == g, !!rlang::sym(g),0))
-  
+
+  tstout <- tst %>% 
+    mutate(!!paste("res", g, sep="_") := ifelse(grp == g, !!rlang::sym(g),0)) %>% 
+    select(!!paste("res", g, sep="_")) %>% 
+    cbind(tstout)
+
 }
 
-g = "a"
-tst %>% mutate(res = ifelse(grp == g, !!rlang::sym(g), 0))
-
-
-tst
-tstout
-
-
-tst %>% rowwise() %>% mutate(res := !!rlang::sym(paste(grp)))
-
-tst %>%
-  group_by(grp) %>%
-  mutate_(res = grp)
-
-
+tstout %>% select(starts_with("res_")) %>% mutate(res = rowSums(.))
 
 
 ```
