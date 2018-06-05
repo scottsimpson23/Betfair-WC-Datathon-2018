@@ -207,7 +207,7 @@ Scratch Pad
 # test_out_frame %>% filter(team_1 == "England" | team_2 == "England") %>% 
 #   select(team_1, team_2, contains("goals")) %>% head()
 
-#levels(team_list$value) %>% head()
+levels(team_list$value) %>% head()
 
 
 ```
@@ -248,6 +248,40 @@ rm(temp_out_frame)
 
 
 ```{r Scratchpad for writing rolling features logic}
+
+#create a 2 period conditional rolling sum for one team
+
+team_name <- "England"
+
+create_match_specific_columns <- function(team_name) {
+  
+  column_name = paste(team_name, "_outcome", sep="")
+  df %>% mutate(temp_outcome = !!if_else(quo(team_1) == team_name, column_name, 
+                                    ifelse(quo(team_2) == team_name, column_name, 0))) %>%
+    select(team_1, team_2, !!column_name, temp_outcome) %>%
+    filter(team_1 == "England" | team_2 == "England")
+  
+}
+
+  column_name = paste(team_name, "_outcome_stage", sep="")
+  df %>% mutate(temp_outcome := if_else(team_1 == team_name, !!rlang::sym(column_name), 
+                                    ifelse(team_2 == team_name, !!rlang::sym(column_name), 0))) %>%
+    select(team_1, team_2, column_name, temp_outcome) %>%
+    filter(team_1 == "England" | team_2 == "England") %>% head
+  
+team_name <- "England"
+  df %>% mutate(temp_outcome := !!rlang::sym(column_name)) %>%
+    select(team_1, team_2, column_name, temp_outcome) %>%
+    filter(team_1 == "England" | team_2 == "England") %>% head
+  
+create_match_specific_columns(team_test) %>% head
+  
+########Stuck here, try https://dplyr.tidyverse.org/articles/programming.html
+
+df %>% select(paste(team_name, "_outcome", sep=""))
+
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_outcome = roll_sum(lag(team_1_outcome, 1), n = 2, align = "right", fill=0))
+df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
 
 
 
@@ -308,94 +342,76 @@ for(numb in c(2,5,10,20,50)) {
   #use lmap to apply the function to each list item, returning three columns for each list item bound into a tbl
   temp_out_frame <- team_list$value %>% lmap(~create_rolling_sums_by_team(.x, rolling_window = numb)) 
   
-  #add team names to temp_out_frame
+  #for each set of metrics (outcomes, goals, opponentgoals) 
+  
   temp_out_frame <- as.tibble(temp_out_frame)
-  temp_out_frame <- df %>% select(team_1) %>% cbind(temp_out_frame)
-  temp_out_frame <- df %>% select(team_2) %>% cbind(temp_out_frame)
-  
-  ####Team 1
-  #create list of teams in team_1
-  lst <-  unique(df$team_1)
-  
-  ###rolling_outcome loop
-  for(measure in c("outcome", "goals", "opponentgoals")) {
-    
 
-    #initialise the staging frame
-    staging_frame <- as_tibble(data.frame(matrix(nrow=n,ncol=0)))
-    
-    #loop through the teams list & create a column where it equals the team value when playing, zero otherwise
-    for(g in lst) {
-      
-      staging_frame <- temp_out_frame %>% 
-        mutate(!!paste("team_1_rolling_", numb, "_", measure, "_", g, sep="") := 
-                 ifelse(team_1 == g, !!rlang::sym(paste(g, "_", numb, "_rolling_", measure, "_stage", sep="")),0)) %>% 
-        select(!!paste("team_1_rolling_", numb, "_", measure, "_", g, sep="")) %>% 
-        cbind(staging_frame)
-      
-    }
-    
-    #sum each row to give the aggregated team_1 list
-    res <- staging_frame %>% 
-      mutate(!!paste("team_1_rolling_", numb, "_", measure, sep="") := rowSums(.)) %>% 
-      select(!!paste("team_1_rolling_", numb, "_", measure, sep=""))
-    
-    #bind it to the main dataframe and clean up
-    df <- df %>% cbind(res)
-    rm(staging_frame)
+  staging_frame <- temp_out_frame %>% 
+    select(ends_with(paste(numb,"_rolling_outcome_stage", sep=""))) %>%
+    mutate(!!paste("match_",numb,"_rolling_outcome",sep="") := rowSums(.)) %>%
+    select(!!paste("match_",numb,"_rolling_outcome",sep="")) 
   
-  }
+  staging_frame <- temp_out_frame %>% select(ends_with(paste(numb,"_rolling_goals_stage", sep=""))) %>%
+  mutate(!!paste("match_",numb,"_rolling_goals",sep="") := rowSums(.)) %>%
+  select(!!paste("match_",numb,"_rolling_goals",sep="")) %>%
+  cbind(staging_frame)
+  
+  staging_frame <- temp_out_frame %>% select(ends_with(paste(numb,"_rolling_opponentgoals_stage", sep=""))) %>%
+  mutate(!!paste("match_",numb,"_rolling_opponentgoals",sep="") := rowSums(.)) %>%
+  select(!!paste("match_",numb,"_rolling_opponentgoals",sep="")) %>%
+  cbind(staging_frame)
+  
+  #staging_frame %>% tail(20)
+  
+  #add this to the main dataframe
+  df <- cbind(df, staging_frame)
 
-  ####Team 2
-  #create list of teams in team_2
-  lst <-  unique(df$team_2)
-  
-  ###rolling_outcome loop
-  for(measure in c("outcome", "goals", "opponentgoals")) {
-    
-
-    #initialise the staging frame
-    staging_frame <- as_tibble(data.frame(matrix(nrow=n,ncol=0)))
-    
-    #loop through the teams list & create a column where it equals the team value when playing, zero otherwise
-    for(g in lst) {
-      
-      staging_frame <- temp_out_frame %>% 
-        mutate(!!paste("team_2_rolling_", numb, "_", measure, "_", g, sep="") := 
-                 ifelse(team_2 == g, !!rlang::sym(paste(g, "_", numb, "_rolling_", measure, "_stage", sep="")),0)) %>% 
-        select(!!paste("team_2_rolling_", numb, "_", measure, "_", g, sep="")) %>% 
-        cbind(staging_frame)
-      
-    }
-    
-    #sum each row to give the aggregated team_1 list
-    res <- staging_frame %>% 
-      mutate(!!paste("team_2_rolling_", numb, "_", measure, sep="") := rowSums(.)) %>% 
-      select(!!paste("team_2_rolling_", numb, "_", measure, sep=""))
-    
-    #bind it to the main dataframe and clean up
-    df <- df %>% cbind(res)
-    rm(staging_frame)
-  
-  }
-  
-  
-  
 }
 parallelStop()
 
-#remove transitory columns from the main DF
-df <- df %>% select(-ends_with("_stage"))
+# to create team_1_rolling_2_outcom I need to 
+# group by team_1
+# assign team_1s 
+
+df <- df %>% group_by(team_1) %>% mutate(team_1_rolling_2_outcome = roll_sum(lag(team_1_outcome, 1), n = 2, align = "right", fill=0))
+df$team_1_rolling_2_outcome <- df$team_1_rolling_2_outcome %>% replace_na(0)
 
 
-#df <- df %>% select(-starts_with("match"))
-
-#df %>% select(starts_with("team_1_rolling")) %>% tail
-
-#df <- df %>% select(-starts_with("team_1_rolling"))
+df %>% select(team_1, team_2, team_1_goals, team_2_goals, England_outcome_stage, match_2_rolling_outcome, match_5_rolling_outcome)  %>% 
+  filter(team_1 == "England" | team_2 == "England") %>% tail(20)
 
 
-#df %>% select(ends_with("50_goals"), ends_with("50_outcome")) %>% tail
+#clean up
+#rm(temp_out_frame)
+#rm(staging_frame)
+
+
+
+tst <- tibble(res = rep(0,6), grp = c("a","a","b","b","c", "c"), a = rep(2,6), b = rep(8,6), c=rep(16,6))
+tst
+
+lst <-  unique(tst$grp)
+
+for(g in lst) {
+  
+  
+  tstout <- tst %>% mutate(res = ifelse(grp == g, !!rlang::sym(g),0))
+  
+}
+
+g = "a"
+tst %>% mutate(res = ifelse(grp == g, !!rlang::sym(g), 0))
+
+
+tst
+tstout
+
+
+tst %>% rowwise() %>% mutate(res := !!rlang::sym(paste(grp)))
+
+tst %>%
+  group_by(grp) %>%
+  mutate_(res = grp)
 
 
 
