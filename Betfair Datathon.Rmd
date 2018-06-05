@@ -384,54 +384,19 @@ for(numb in c(2,5,10,20,50)) {
 }
 parallelStop()
 
-<<<<<<< HEAD
 #remove transitory columns from the main DF
 df <- df %>% select(-ends_with("_stage"))
 
-||||||| merged common ancestors
-# to create team_1_rolling_2_outcom I need to 
-# group by team_1
-# assign team_1s 
+df %>% write_csv("df_after_processing.csv")
 
-#####I am here
-
-#clean up
-#rm(temp_out_frame)
-#rm(staging_frame)
-=======
-#remove transitory columns from the main DF
-df <- df %>% select(-ends_with("_stage"))
->>>>>>> 547218c1400cf4488ac4226b3ac8157baaf7ddab
-
-<<<<<<< HEAD
 #df <- df %>% select(-starts_with("match"))
-||||||| merged common ancestors
-=======
+
 #df %>% select(starts_with("team_1_rolling")) %>% tail
->>>>>>> 547218c1400cf4488ac4226b3ac8157baaf7ddab
 
-<<<<<<< HEAD
-#df %>% select(starts_with("team_1_rolling")) %>% tail
-||||||| merged common ancestors
-=======
 #df <- df %>% select(-starts_with("team_1_rolling"))
->>>>>>> 547218c1400cf4488ac4226b3ac8157baaf7ddab
-
-<<<<<<< HEAD
-#df <- df %>% select(-starts_with("team_1_rolling"))
-||||||| merged common ancestors
-tst <- tibble(res = rep(0,6), grp = c("a","a","b","b","c", "c"), a = rep(2,6), b = rep(8,6), c=rep(16,6))
-tst
-=======
->>>>>>> 547218c1400cf4488ac4226b3ac8157baaf7ddab
 
 
-<<<<<<< HEAD
 #df %>% select(ends_with("50_goals"), ends_with("50_outcome")) %>% tail
-||||||| merged common ancestors
-for(g in lst) {
-=======
->>>>>>> 547218c1400cf4488ac4226b3ac8157baaf7ddab
 
 
 
