@@ -1,0 +1,52 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+
+
+library(tidyverse)
+
+tst <- tibble(grp = c("a","a","b","b","c","c"), a = rep(2,6), b = rep(4,6), c = rep(8,6), target = c(2,2,4,4,8,8), res = rep(0,6))
+
+lst <-  unique(tst$grp)
+
+for(g in lst) {
+  
+  tst <- tst %>% 
+    mutate(!!paste("res", g, sep="_") := ifelse(grp == g, !!rlang::sym(g),0)) %>% 
+    select(!!paste("res", g, sep="_")) %>% 
+    cbind(tst)
+}
+
+res <- tst %>% select(starts_with("res_")) %>% mutate(res = rowSums(.)) %>% select(res)
+tst <- tst %>% select(grp, a, b, c, target) %>% cbind(res)
+
+tst
+
+
+
+
+
+```
+
+
+
+```{r}
+tst %>% 
+  mutate(res = unlist(lapply(seq(nrow(tst)), function(x) tst[x,as.character(tst$grp[x])])))
+
+tst %>% 
+  mutate(res = purrr::imap_dbl(grp, df = ., 
+    .f = function(g, i, df) df[i,g][[1]] # [[1]] turns the result from tibble into a double
+  )) 
+
+
+
+```
+
