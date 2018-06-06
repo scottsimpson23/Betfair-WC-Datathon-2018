@@ -22,6 +22,7 @@ library(mlr)
 library(lubridate)
 library(parallelMap)
 library(RcppRoll)
+#ibrary(Fselector)
 ```
 
 Read Data
@@ -248,8 +249,92 @@ rm(temp_out_frame)
 
 
 ```{r Scratchpad for writing rolling features logic}
+# #WC 2002
+# rin$train.inds[[1]] <- 1:2754
+# rin$test.inds[[1]] <- 2755:2818
+# #World Cup 2006
+# rin$train.inds[[2]] <- 1:5687
+# rin$test.inds[[2]] <- 5688:5751
+# #World Cup 2010
+# rin$train.inds[[3]] <- 1:8698
+# rin$test.inds[[3]] <- 8699:8762
+# #World Cup 2014
+# rin$train.inds[[4]] <- 1:11805
+# rin$test.inds[[4]] <- 11806:11869
+# 
+# df %>% select(tournament.World.Cup) %>%
+#   filter(row_number() %in% 2755:2818)
+# 
+# df %>% mutate(id = row_number()) %>%
+#   select(tournament.World.Cup, id) %>%
+#   filter(tournament.World.Cup == 1)
+# 
+# 
+# 
+# 
+# 
+# 
+# #Create WC index for join
+# df <- df %>%   
+#   filter() %>%
+#   mutate(joindex = ifelse(row_number() %in% 2755:2818, "WC2002", 0))
+# df <- df %>%   
+#   filter() %>%
+#   mutate(joindex = ifelse(row_number() %in% 5688:5751, "WC2006", 0))
+# df <- df %>%   
+#   filter() %>%
+#   mutate(joindex = ifelse(row_number() %in% 8699:8762, "WC2010", 0))
+# df <- df %>%   
+#   filter() %>%
+#   mutate(joindex = ifelse(row_number() %in% 11806:11869, "WC2014", 0))
+# 
+# 
+# #Create table of pre-WC values
+# pre_wc <- df %>%
+#   select(starts_with("team_1_rolling"), starts_with("team_2_rolling")) %>%
+#   filter(row_number() %in% c(2754,5687,8698,11805))
+# 
+# joindex <- tibble(joindex = c("WC2002", "WC2006", "WC2010", "WC2014"))
+# pre_wc <-  bind_cols(pre_wc, joindex)
+# 
+# tst <- df
+# df.back <- df
+# df <- tst
+# tst <- df.back
+# 
+# tst <- left_join(x = tst, y = pre_wc, copy = TRUE)
+# 
+# tst <- mutate_at(.vars = starts_with("team_1_rolling"), .funs = ifelse(joindex != is.na(), NA, 0))
+#  
+# tst %>% 
+#   filter(joindex != "WC2002") %>% head
+# 
+# #generate list of columns
+# col_list <- tst %>%
+#   select(starts_with("team_1_rolling"), starts_with("team_2_rolling")) %>%
+#   colnames()
+# 
+# for(cn in col_list){
+#   
+#   tst <- tst %>%   
+#     mutate(!!cn := ifelse(row_number() %in% 2755:2818, NA, !!rlang::sym(cn)))
+#   tst <- tst %>%   
+#     mutate(!!cn := ifelse(row_number() %in% 5688:5751, NA, !!rlang::sym(cn)))
+#   tst <- tst %>%   
+#     mutate(!!cn := ifelse(row_number() %in% 8699:8762, NA, !!rlang::sym(cn)))
+#   tst <- tst %>%   
+#     mutate(!!cn := ifelse(row_number() %in% 11806:11869, NA, !!rlang::sym(cn)))
+#   tst <- tst %>% fill(!!cn)
+#   
+# }
+#   
+# 
+# tst %>% select(starts_with("team_1_rolling"), starts_with("team_2_rolling")) %>%
+#   filter(row_number() %in% 11800:11869)
+# 
 
 
+#iterate through list
 
 
 ```
@@ -303,13 +388,34 @@ create_rolling_sums_by_team <- function (team_name, rolling_window){
 
 
 parallelStartSocket(3)
-for(numb in c(2,5,10,20,50)) {
+for(numb in c(2)) {
 
   #use lmap to apply the function to each list item, returning three columns for each list item bound into a tbl
   temp_out_frame <- team_list$value %>% lmap(~create_rolling_sums_by_team(.x, rolling_window = numb)) 
+  temp_out_frame <- as.tibble(temp_out_frame)
+  
+  #Reset rows during WC to the value just prior to the WC starting
+  #generate list of columns
+  col_list <- temp_out_frame %>%  select(ends_with("stage")) %>% colnames()
+  
+  #iterate through column list, set rows in WC range to NA then fill down at the end to copy from above
+  for(cn in col_list){
+  
+    temp_out_frame <- temp_out_frame %>%   
+      mutate(!!cn := ifelse(row_number() %in% 2755:2818, NA, !!rlang::sym(cn)))
+    temp_out_frame <- temp_out_frame %>%   
+      mutate(!!cn := ifelse(row_number() %in% 5688:5751, NA, !!rlang::sym(cn)))
+    temp_out_frame <- temp_out_frame %>%   
+      mutate(!!cn := ifelse(row_number() %in% 8699:8762, NA, !!rlang::sym(cn)))
+    temp_out_frame <- temp_out_frame %>%   
+      mutate(!!cn := ifelse(row_number() %in% 11806:11869, NA, !!rlang::sym(cn)))
+    temp_out_frame <- temp_out_frame %>% fill(!!cn)
+    
+  }
+  
   
   #add team names to temp_out_frame
-  temp_out_frame <- as.tibble(temp_out_frame)
+
   temp_out_frame <- df %>% select(team_1) %>% cbind(temp_out_frame)
   temp_out_frame <- df %>% select(team_2) %>% cbind(temp_out_frame)
   
@@ -372,32 +478,29 @@ for(numb in c(2,5,10,20,50)) {
     res <- staging_frame %>% 
       mutate(!!paste("team_2_rolling_", numb, "_", measure, sep="") := rowSums(.)) %>% 
       select(!!paste("team_2_rolling_", numb, "_", measure, sep=""))
-    
+     
     #bind it to the main dataframe and clean up
     df <- df %>% cbind(res)
     rm(staging_frame)
   
   }
   
-  
-  
+  ####Differential features - team_1 centric
+  for(measure in c("outcome", "goals", "opponentgoals")) {
+    df <- df %>%
+    mutate(!!paste("diff_rolling_", numb, "_", measure, sep="") :=
+             (!!rlang::sym(paste("team_1_rolling_", numb, "_", measure, sep="")) - !!rlang::sym(paste("team_2_rolling_", numb, "_", measure, sep=""))))
+  }
 }
 parallelStop()
 
 #remove transitory columns from the main DF
 df <- df %>% select(-ends_with("_stage"))
 
-df %>% write_csv("df_after_processing.csv")
+#df %>% tail
 
-#df <- df %>% select(-starts_with("match"))
-
-#df %>% select(starts_with("team_1_rolling")) %>% tail
-
-#df <- df %>% select(-starts_with("team_1_rolling"))
-
-
-#df %>% select(ends_with("50_goals"), ends_with("50_outcome")) %>% tail
-
+########TODO###########
+# 
 
 
 
@@ -405,6 +508,8 @@ df %>% write_csv("df_after_processing.csv")
 
 
 ```{r Create ELO metrics}
+
+
 
 # determine base K from lookup table (inner join on k value table)
 # insert game index integer
@@ -531,7 +636,7 @@ calculateConfusionMatrix(pred)
 ## 1) Define the task
 ## Specify the type of analysis (e.g. classification) and provide data and response variable
 task = makeClassifTask(id = "football", data = df, target = "outcome")
-task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome"))
+task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome", "team_1_index", "team_2_index"))
 
 fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
 #fv = generateFilterValuesData(task, method=c("kruskal.test"))
@@ -693,5 +798,6 @@ logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, o
 logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "xgBoost untuned, rounds=10", mmce = 0.5507812, accuracy = 0.4492188, logloss = 1.0424440)
 logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "xgBoost tuned", mmce = 0.4726562, accuracy = 0.5273438, logloss = 0.9890529)
 logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.4804688, accuracy = 0.5195312, logloss = 1.0265465)
+logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only)", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.484375, accuracy = 0.515625, logloss = 1.000267)
 ```
 
