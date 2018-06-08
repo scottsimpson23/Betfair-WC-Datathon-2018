@@ -348,26 +348,26 @@ create_rolling_sums_by_team <- function (team_name, rolling_window){
   col_name = paste(team_name, "_", rolling_window, "_rolling_outcome_stage", sep="")
   temp_frame <- df %>% 
     filter(team_1 == !!team_name | team_2 == !!team_name) %>%
-    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_outcome_stage", sep="")),1), n = rolling_window, align = "right", fill = 0)) %>%
+    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_outcome_stage", sep="")),1), n = rolling_window, align = "right", fill = NA)) %>%
     select(team_1, team_2, days, !!col_name)
   #Join to the unfiltered dataset
   return_value <- df %>% 
     left_join(temp_frame) %>% 
-    select(!!col_name) %>%
-    replace(is.na(.), 0)
+    select(!!col_name) # %>%
+   # replace(is.na(.), 0)
 
   #repeat for rolling for goals
   col_name = paste(team_name, "_", rolling_window, "_rolling_goals_stage", sep="")
   temp_frame <- df %>%
     mutate(!!col_name := 0) %>%
     filter(team_1 == !!team_name | team_2 == !!team_name) %>%
-    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_goals_stage", sep="")),1), n = rolling_window, align = "right", fill = 0))  %>%
+    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_goals_stage", sep="")),1), n = rolling_window, align = "right", fill = NA))  %>%
     select(team_1, team_2, days, !!col_name)
   #Join to the unfiltered dataset  
   return_value <- df %>% 
     left_join(temp_frame) %>% 
     select(!!col_name) %>%
-    replace(is.na(.), 0) %>%
+    #replace(is.na(.), 0) %>%
     cbind(return_value)
 
   #repeat for rolling against goals
@@ -375,47 +375,61 @@ create_rolling_sums_by_team <- function (team_name, rolling_window){
   temp_frame <- df %>%
     mutate(!!col_name := 0) %>%
     filter(team_1 == !!team_name | team_2 == !!team_name) %>%
-    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_opponentgoals_stage", sep="")),1), n = rolling_window, align = "right", fill = 0)) %>%
+    mutate(!!col_name := roll_sum(lag(!!rlang::sym(paste(team_name, "_opponentgoals_stage", sep="")),1), n = rolling_window, align = "right", fill = NA)) %>%
     select(team_1, team_2, days, !!col_name)
   #Join to the unfiltered dataset  
   return_value <- df %>% 
     left_join(temp_frame) %>% 
     select(!!col_name) %>%
-    replace(is.na(.), 0) %>%
+    #replace(is.na(.), 0) %>%
     cbind(return_value)
   
 }
 
 
 parallelStartSocket(3)
-for(numb in c(2)) {
+for(numb in c(2,5,10,20,50)) {
 
-  numb = 2
   #use lmap to apply the function to each list item, returning three columns for each list item bound into a tbl
   temp_out_frame <- team_list$value %>% lmap(~create_rolling_sums_by_team(.x, rolling_window = numb)) 
+  temp_out_frame <- as.tibble(temp_out_frame)
   
   #Reset rows during WC to the value just prior to the WC starting
   #generate list of columns
   col_list <- temp_out_frame %>%  select(ends_with("stage")) %>% colnames()
   
-  #iterate through column list, set rows in WC range to NA then fill down at the end to copy from above
-  for(cn in col_list){
+  temp_out_frame <- df %>% select(tournament.World.Cup) %>% cbind(temp_out_frame)
   
+  #iterate through column list, set rows in WC range to NA then fill down at the end to copy from above
+  # for(cn in col_list){
+  # 
+  #   temp_out_frame <- temp_out_frame %>%   
+  #     mutate(!!cn := ifelse(row_number() %in% 2755:2818, NA, !!rlang::sym(cn)))
+  #   temp_out_frame <- temp_out_frame %>%   
+  #     mutate(!!cn := ifelse(row_number() %in% 5688:5751, NA, !!rlang::sym(cn)))
+  #   temp_out_frame <- temp_out_frame %>%   
+  #     mutate(!!cn := ifelse(row_number() %in% 8699:8762, NA, !!rlang::sym(cn)))
+  #   temp_out_frame <- temp_out_frame %>%   
+  #     mutate(!!cn := ifelse(row_number() %in% 11806:11869, NA, !!rlang::sym(cn)))
+  #   temp_out_frame <- temp_out_frame %>% fill(!!cn)
+  #   
+  # }
+  
+  for(cn in col_list){
+    
     temp_out_frame <- temp_out_frame %>%   
-      mutate(!!cn := ifelse(row_number() %in% 2755:2818, NA, !!rlang::sym(cn)))
-    temp_out_frame <- temp_out_frame %>%   
-      mutate(!!cn := ifelse(row_number() %in% 5688:5751, NA, !!rlang::sym(cn)))
-    temp_out_frame <- temp_out_frame %>%   
-      mutate(!!cn := ifelse(row_number() %in% 8699:8762, NA, !!rlang::sym(cn)))
-    temp_out_frame <- temp_out_frame %>%   
-      mutate(!!cn := ifelse(row_number() %in% 11806:11869, NA, !!rlang::sym(cn)))
+      mutate(!!cn := ifelse(tournament.World.Cup == 1, NA, !!rlang::sym(cn)))
     temp_out_frame <- temp_out_frame %>% fill(!!cn)
     
   }
   
+  temp_out_frame <- temp_out_frame %>%
+    select(ends_with("stage")) %>%
+    replace(is.na(.), 0)
+    
   
   #add team names to temp_out_frame
-  temp_out_frame <- as.tibble(temp_out_frame)
+  temp_out_frame <- df %>% select(tournament.World.Cup) %>% cbind(temp_out_frame)
   temp_out_frame <- df %>% select(team_1) %>% cbind(temp_out_frame)
   temp_out_frame <- df %>% select(team_2) %>% cbind(temp_out_frame)
   
@@ -448,6 +462,7 @@ for(numb in c(2)) {
     
     #bind it to the main dataframe and clean up
     df <- df %>% cbind(res)
+    staging_frame1 <- staging_frame
     rm(staging_frame)
   
   }
@@ -478,19 +493,20 @@ for(numb in c(2)) {
     res <- staging_frame %>% 
       mutate(!!paste("team_2_rolling_", numb, "_", measure, sep="") := rowSums(.)) %>% 
       select(!!paste("team_2_rolling_", numb, "_", measure, sep=""))
-    
+     
     #bind it to the main dataframe and clean up
     df <- df %>% cbind(res)
+    staging_frame2 <- staging_frame
     rm(staging_frame)
   
   }
   
   ####Differential features - team_1 centric
-  # for(measure in c("outcome", "goals", "opponentgoals")) {
-  #   df <- df %>%
-  #   mutate(!!paste("diff_rolling_", numb, "_", measure, sep="") := 
-  #            (!!rlang::sym(paste("team_1_rolling_", numb, "_", measure, sep="")) - !!rlang::sym(paste("team_2_rolling_", numb, "_", measure, sep=""))))
-  # }
+  for(measure in c("outcome", "goals", "opponentgoals")) {
+    df <- df %>%
+    mutate(!!paste("diff_rolling_", numb, "_", measure, sep="") :=
+             (!!rlang::sym(paste("team_1_rolling_", numb, "_", measure, sep="")) - !!rlang::sym(paste("team_2_rolling_", numb, "_", measure, sep=""))))
+  }
 }
 parallelStop()
 
@@ -500,11 +516,58 @@ df <- df %>% select(-ends_with("_stage"))
 #df %>% tail
 
 ########TODO###########
-# 
+# fix CV window boundaries
 
+```
+
+```{r}
+#evaluation code, creates a file just for England to check the numbers
+df_england <- df %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(team_1, team_2, team_1_goals, team_2_goals, is_team_1_home, is_neutral, outcome, team_1_outcome, team_2_outcome, tournament.World.Cup, starts_with("England"), team_1_rolling_2_opponentgoals, team_2_rolling_2_opponentgoals)
+staging_frame1 <- df %>% select(team_1, team_2) %>%
+  bind_cols(staging_frame1)
+staging_frame2 <- df %>% select(team_1, team_2) %>%
+  bind_cols(staging_frame2)
+df_england <- staging_frame1 %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(ends_with("England")) %>%
+  bind_cols(df_england)
+df_england <- staging_frame2 %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(ends_with("England")) %>%
+  bind_cols(df_england)
+df_england <- temp_out_frame %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(starts_with("England")) %>%
+  bind_cols(df_england)
+
+df_england %>% write_csv(path = "england.csv")
+
+temp_out_frame <- df %>% select(tournament.World.Cup) %>% cbind(temp_out_frame)
+
+temp_out_frame %>% select(team_1, team_2, tournament.World.Cup, starts_with("England")) %>% write_csv(path="all_short.csv")
+
+
+df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
+filter(tournament.World.Cup == 1) %>%
+  select(starts_with("Italy")) %>%
+  mutate(rownum = row_number())
+
+df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
+filter(tournament.World.Cup == 1) %>%
+  select(ends_with("stage")) %>%
+  mutate(sums = rowSums(.)) %>%
+  select(sums)
+
+
+#save the df out
+df %>% write_csv(path = "df_with_rolling_features_for_learner.csv")
+  
 
 
 ```
+
 
 
 ```{r Create ELO metrics}
@@ -541,9 +604,9 @@ Create MLR Learner
 task = makeClassifTask(id = "football", data = df, target = "outcome")
 task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome"))
 
-n = nrow(df)
-train.set = sample(n, size = 2/3*n)
-test.set = setdiff(1:n, train.set)
+#n = nrow(df)
+#train.set = sample(n, size = 2/3*n)
+#test.set = setdiff(1:n, train.set)
 
 
 fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
@@ -584,17 +647,17 @@ str(rin)
 cv = makeResampleDesc(method="CV", iters=4)
 rin = makeResampleInstance(cv, task=task)
 #World Cup 2002
-rin$train.inds[[1]] <- 1:2756
-rin$test.inds[[1]] <- 2757:2820
+rin$train.inds[[1]] <- 1:2754
+rin$test.inds[[1]] <- 2755:2818
 #World Cup 2006
-rin$train.inds[[2]] <- 1:5688
-rin$test.inds[[2]] <- 5689:5752
+rin$train.inds[[2]] <- 1:5687
+rin$test.inds[[2]] <- 5688:5751
 #World Cup 2010
-rin$train.inds[[3]] <- 1:8699
-rin$test.inds[[3]] <- 8700:8763
+rin$train.inds[[3]] <- 1:8698
+rin$test.inds[[3]] <- 8699:8762
 #World Cup 2014
-rin$train.inds[[4]] <- 1:11806
-rin$test.inds[[4]] <- 11807:11870
+rin$train.inds[[4]] <- 1:11805
+rin$test.inds[[4]] <- 11806:11869
 
 
 
@@ -673,8 +736,8 @@ lrn.xgb = makeLearner("classif.xgboost", predict.type="prob", nrounds=10)
 cv = makeResampleDesc(method="CV", iters=4)
 rin = makeResampleInstance(cv, task=task)
 #World Cup 2002
-rin$train.inds[[1]] <- 1:2756
-rin$test.inds[[1]] <- 2757:2820
+rin$train.inds[[1]] <- 1:2754
+rin$test.inds[[1]] <- 2755:2818
 #World Cup 2006
 rin$train.inds[[2]] <- 1:5687
 rin$test.inds[[2]] <- 5688:5751
@@ -691,15 +754,15 @@ rin$test.inds[[4]] <- 11806:11869
 
 ```{r Execute the Resampling Strategies to evaluate the learners}
 
-parallelStartSocket(3)
+parallelStartSocket(parallel::detectCores()-1)
 resample.rf = resample(learner=lrn.rf, task=task, resampling = rin, measures = logloss)
 parallelStop()
 
-parallelStartSocket(3)
+parallelStartSocket(parallel::detectCores()-1)
 resample.naiveBayes = resample(learner=lrn.naiveBayes, task=task, resampling = rin, measures = logloss)
 parallelStop()
 
-parallelStartSocket(3)
+parallelStartSocket(parallel::detectCores()-1)
 resample.xgb = resample(learner=lrn.xgb, task=task, resampling = rin, measures = logloss)
 parallelStop()
 
@@ -735,7 +798,7 @@ makeNumericParam("lambda",lower=0,upper=200),
 makeNumericParam("eta", lower = 0, upper = 1)
 )
 
-parallelStartSocket(3)
+parallelStartSocket(parallel::detectCores()-1)
 xg_tc = makeTuneControlMBO(budget=100)
 xg_tr = tuneParams(learner = lrn.xgb, task = task, resampling = rin, measures = logloss, control=xg_tc, par.set = xg_ps)
 parallelStop()
@@ -750,7 +813,7 @@ makeIntegerParam("mtry", lower = 3, upper = 10),
 makeIntegerParam("nodesize", lower = 10, upper = 50)
 ) 
 
-parallelStartSocket(3)
+parallelStartSocket(parallel::detectCores()-1)
 rf_tc = makeTuneControlMBO(budget=100)
 rf_tr = tuneParams(learner = lrn.rf, task = task, resampling = rin, measures = logloss, control=rf_tc, par.set = rf_ps)
 parallelStop()
@@ -799,5 +862,8 @@ logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, o
 logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "xgBoost tuned", mmce = 0.4726562, accuracy = 0.5273438, logloss = 0.9890529)
 logtablewc <- logtablewc %>% add_row(comments = "baseline dataset, unfiltered, one-hot encoding of tournament", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.4804688, accuracy = 0.5195312, logloss = 1.0265465)
 logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only)", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.484375, accuracy = 0.515625, logloss = 1.000267)
+logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only) broken rolling logic during WC", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.578125, accuracy = 0.421875, logloss = 1.233476)
+logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only), no rolling during WC", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.468750, accuracy = 0.531250, logloss = 1.013074)
+logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only), no rolling during WC", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.4531250, accuracy = 0.5468750, logloss = 0.9970458)
 ```
 
