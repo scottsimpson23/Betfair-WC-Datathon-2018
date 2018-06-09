@@ -520,6 +520,7 @@ df <- df %>% select(-ends_with("_stage"))
 
 ```
 
+
 ```{r}
 #evaluation code, creates a file just for England to check the numbers
 df_england <- df %>% 
@@ -565,9 +566,48 @@ filter(tournament.World.Cup == 1) %>%
 df %>% write_csv(path = "df_with_rolling_features_for_learner.csv")
   
 
+#evaluation code, creates a file just for England to check the numbers
+df_england <- df %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(team_1, team_2, team_1_goals, team_2_goals, is_team_1_home, is_neutral, outcome, team_1_outcome, team_2_outcome, tournament.World.Cup, starts_with("England"), team_1_rolling_2_opponentgoals, team_2_rolling_2_opponentgoals)
+staging_frame1 <- df %>% select(team_1, team_2) %>%
+  bind_cols(staging_frame1)
+staging_frame2 <- df %>% select(team_1, team_2) %>%
+  bind_cols(staging_frame2)
+df_england <- staging_frame1 %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(ends_with("England")) %>%
+  bind_cols(df_england)
+df_england <- staging_frame2 %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(ends_with("England")) %>%
+  bind_cols(df_england)
+df_england <- temp_out_frame %>% 
+  filter(team_1 == "England" | team_2 == "England") %>%
+  select(starts_with("England")) %>%
+  bind_cols(df_england)
+
+df_england %>% write_csv(path = "england.csv")
+
+temp_out_frame <- df %>% select(tournament.World.Cup) %>% cbind(temp_out_frame)
+
+temp_out_frame %>% select(team_1, team_2, tournament.World.Cup, starts_with("England")) %>% write_csv(path="all_short.csv")
+
+
+df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
+filter(tournament.World.Cup == 1) %>%
+  select(starts_with("Italy")) %>%
+  mutate(rownum = row_number())
+
+df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
+filter(tournament.World.Cup == 1) %>%
+  select(ends_with("stage")) %>%
+  mutate(sums = rowSums(.)) %>%
+  select(sums)
+
+
 
 ```
-
 
 
 ```{r Create ELO metrics}
