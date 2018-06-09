@@ -116,7 +116,7 @@ random_win_prob = 7044/(7044+3992+3530)
 random_draw_prob = 3530/(7044+3992+3530)
 random_loss_prob = 3992/(7044+3992+3530)
 
-n = nrow(df)
+n <- nrow(df)
 
 random_accuracy <- measureACC(df$outcome, rep("win", n))
 random_mmce <- measureMMCE(df$outcome, rep("win", n))
@@ -572,8 +572,6 @@ df %>% write_csv(path = "df_with_rolling_features_for_learner.csv")
 
 ```{r Create ELO metrics}
 
-
-
 # determine base K from lookup table (inner join on k value table)
 # insert game index integer
 # 
@@ -591,6 +589,84 @@ df %>% write_csv(path = "df_with_rolling_features_for_learner.csv")
 #   
 # 
 # }
+
+#
+
+#setup ELO table
+
+elotable <- df %>% select(team_1, team_2, team_1_goals, team_2_goals, is_team_1_home, team_1_outcome, team_2_outcome, starts_with("tournament"))
+
+#adjust outcome variables to match elorating.net form
+elotable <- elotable %>% mutate(team_1_outcome = (team_1_outcome +1)/2)
+elotable <- elotable %>% mutate(team_2_outcome = (team_2_outcome +1)/2)
+
+
+# assign k-factor to matches from eloratings.net
+#df %>% select(starts_with("tournament")) %>% colnames()
+elotable <- elotable %>% mutate(k_factor = case_when(
+  tournament.Friendly == 1 ~ 20,
+  tournament.African.Cup.of.Nations.Qualifiers == 1 ~ 40,
+  tournament.Euro.Qualifiers == 1 ~ 40,
+  tournament.Oceania.Nations.Cup == 1 ~ 30,
+  tournament.Copa.America == 1 ~ 50,
+  tournament.Confederations.Cup == 1 ~ 50,
+  tournament.Asian.Cup.Qualifiers == 1 ~ 40,
+  tournament.African.Cup.of.Nations == 1 ~ 50,
+  tournament.Gold.Cup == 1 ~ 50,
+  tournament.World.Cup.Qualifiers == 1 ~ 40,
+  tournament.Euro == 1 ~ 50,
+  tournament.Asian.Cup == 1 ~ 50,
+  tournament.World.Cup == 1 ~ 60,
+  TRUE ~ 0
+))
+elotable <- elotable %>% select(-starts_with("tournament"))
+
+#adjust k factor for goal difference
+elotable <- elotable %>% mutate(goal_diff = abs(team_1_goals - team_2_goals))
+elotable <- elotable %>% mutate(k_factor_adj = case_when(
+  goal_diff == 2 ~ k_factor * 1.5,
+  goal_diff == 3 ~ k_factor * 1.75,
+  goal_diff >= 4 ~ k_factor * (1 + (0.75 + (goal_diff - 3)/8)),
+  TRUE ~ k_factor
+))
+
+#create country specific columns for ELO ratings
+team_list_str <- parse_character(team_list$value)
+for(team in team_list_str) {
+  
+  col_name = paste(team, "elorating", sep="_")
+  elotable <- elotable %>% mutate(!!col_name := 0)
+  
+}
+
+#iterate through rows, calculating elo rating as we go
+for(r in seq(1,n,by=1)) {
+  
+  #elorating in row n is prior to the match, rating in row n+1 is after the match
+  
+  #grab elorating for team 1 and team 2
+  elotable$ro_team_1[r] <- if_else(r == 1, 1311, !!rlang::sym(paste("elotable$", elotable$team_1[r], "_elorating", sep=""))[r])
+  
+  #calculate the ratings differential and adjust for home team (for each team)
+  
+  #calculate and store win expectancy from elorating for each team (use as an additional feature)
+  
+  #calculate the new elorating for each team based on the match result
+  
+  #loop through each country either write new elorating on result (if played) or write previous value
+  
+  
+}
+ r=1
+ elotable$ro_team_1[r] <- ifelse(r==1, 1311, elotable$England_elorating[1])
+ paste("elotable$", elotable$team_1[r], "_elorating[", r, "]", sep="")
+ 
+ t = "England"
+ strng =  paste("elotable$", elotable$team_1[r], "_elorating", sep="")
+ strng
+ !!rlang::sym(strng)
+ 
+ summary(elotable$ro_team_1)
 
 ```
 
