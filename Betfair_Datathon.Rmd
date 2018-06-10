@@ -610,7 +610,7 @@ filter(tournament.World.Cup == 1) %>%
 ```
 
 
-```{r Create ELO metrics}
+```{r Create ELO metrics, warning=FALSE}
 
 # determine base K from lookup table (inner join on k value table)
 # insert game index integer
@@ -633,7 +633,7 @@ filter(tournament.World.Cup == 1) %>%
 #
 
 #setup ELO table
-
+rm(elotable)
 elotable <- df %>% select(team_1, team_2, team_1_goals, team_2_goals, is_team_1_home, team_1_outcome, team_2_outcome, starts_with("tournament"))
 
 #adjust outcome variables to match elorating.net form
@@ -657,9 +657,14 @@ elotable <- elotable %>% mutate(k_factor = case_when(
   tournament.Euro == 1 ~ 50,
   tournament.Asian.Cup == 1 ~ 50,
   tournament.World.Cup == 1 ~ 60,
+  tournament.CECAFA.Cup == 1 ~ 30,
+  tournament.EAFF.Championship == 1 ~ 30,
+  tournament.AFC.Asian.Cup.qualification == 1 ~ 40,
+  tournament.COSAFA.Cup == 1 ~ 30,
+  tournament.Baltic.Cup == 1 ~ 30,
   TRUE ~ 0
 ))
-elotable <- elotable %>% select(-starts_with("tournament"))
+
 
 #adjust k factor for goal difference
 elotable <- elotable %>% mutate(goal_diff = abs(team_1_goals - team_2_goals))
@@ -674,7 +679,7 @@ elotable <- elotable %>% mutate(k_factor_adj = case_when(
 team_list_str <- parse_character(team_list$value)
 for(team in team_list_str) {
   
-  col_name = paste(team, "elorating", sep="_")
+  col_name = paste(team, "elorating_stage", sep="_")
   elotable <- elotable %>% mutate(!!col_name := 0)
   
 }
@@ -684,7 +689,7 @@ initial_elo <- read_csv("inital_elo.csv")
 initial_elo$team <- parse_factor(initial_elo$team, levels = levels(team_list$value))
 for(tm in team_list_str) {
   
-  col_name <-  paste(tm, "_elorating", sep="")
+  col_name <-  paste(tm, "_elorating_stage", sep="")
   elotable[[col_name]][1] <- initial_elo %>% filter(team == tm) %>% select(elorating) %>% as.numeric()
   
   }
@@ -698,9 +703,9 @@ for(r in seq(1,n,by=1)) {
     #elorating in row n is prior to the match, rating in row n+1 is after the match
     
     #grab elorating for team 1 and team 2 and store as a feature
-    col_name <-  paste(elotable$team_1[r], "_elorating", sep="")
+    col_name <-  paste(elotable$team_1[r], "_elorating_stage", sep="")
     elotable$team_1_rating[r] <- elotable[[col_name]][r]
-    col_name <-  paste(elotable$team_2[r], "_elorating", sep="")
+    col_name <-  paste(elotable$team_2[r], "_elorating_stage", sep="")
     elotable$team_2_rating[r] <- elotable[[col_name]][r]   
     
     #calculate the ratings differential and adjust for home team 
@@ -726,7 +731,7 @@ for(r in seq(1,n,by=1)) {
     if(r != n) {
       for(tm in team_list_str) {
         
-        col_name <-  paste(tm, "_elorating", sep="")
+        col_name <-  paste(tm, "_elorating_stage", sep="")
         
         #fill all teams down 1 row (catch all)
         elotable[[col_name]][r+1] <- elotable[[col_name]][r]
@@ -740,10 +745,60 @@ for(r in seq(1,n,by=1)) {
       }
     }
 }
- 
+
+#apply same logic as beofre to this table to remove game-by-game ELO ratings from WC matches
+
+col_list <- elotable %>%  select(ends_with("stage")) %>% colnames()
+for(cn in col_list){
+    
+    elotable <- elotable %>%   
+      mutate(!!cn := ifelse(tournament.World.Cup == 1, NA, !!rlang::sym(cn)))
+    elotable <- elotable %>% fill(!!cn)
+    
+}
+
+
+
+#Need to recopy country elorating into team_rating and recalculate diffrating and win_expects for world cup games only
+for(r in seq(1,n,by=1)) {
+  
+  if(elotable$tournament.World.Cup[r] == 1) {
+    
+    #print(r)
+    #grab elorating for team 1 and team 2 and store as a feature
+    col_name <-  paste(elotable$team_1[r], "_elorating_stage", sep="")
+    elotable$team_1_rating[r] <- elotable[[col_name]][r]
+    col_name <-  paste(elotable$team_2[r], "_elorating_stage", sep="")
+    elotable$team_2_rating[r] <- elotable[[col_name]][r]   
+    
+    #calculate the ratings differential and adjust for home team 
+    elotable$diffrating[r] <- if_else(elotable$is_team_1_home == 1,
+                                               elotable$team_1_rating[r] - elotable$team_2_rating[r] + 100,
+                                               elotable$team_1_rating[r] - elotable$team_2_rating[r]
+                                               )
+
+    
+    #calculate and store win expectancy from elorating for each team (use as an additional feature)
+    elotable$team_1_win_expect[r] <- 1 / (10 ^ (-elotable$diffrating[r] / 400) +1)
+    elotable$team_2_win_expect[r] <- 1 - elotable$team_1_win_expect[r]
+    
+    
+  }
+  
+  
+}
+
+#merge with main table
+elotable_small <- elotable %>% select(team_1_rating, team_2_rating, diffrating, team_1_win_expect, team_2_win_expect)
+df <- df %>% cbind(elotable_small)
+
+
+#elotable %>% write_csv("elotable.csv")
+#elotable_small %>% write_csv("elotable_small.csv")
+
 #elotable %>% select(team_1_rating, team_2_rating, is_team_1_home, diffrating, team_1_win_expect, team_2_win_expect, Ukraine_elorating, Poland_elorating) %>% head
 
-elotable %>% tail
+#elotable %>% tail
 
 
 
