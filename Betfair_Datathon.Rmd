@@ -521,7 +521,7 @@ df <- df %>% select(-ends_with("_stage"))
 ```
 
 
-```{r}
+```{r Evaluation/scratch code for checking}
 #evaluation code, creates a file just for England to check the numbers
 df_england <- df %>% 
   filter(team_1 == "England" | team_2 == "England") %>%
@@ -679,34 +679,75 @@ for(team in team_list_str) {
   
 }
 
-#iterate through rows, calculating elo rating as we go
+#initialise eloratings by setting first row
+initial_elo <- read_csv("inital_elo.csv")
+initial_elo$team <- parse_factor(initial_elo$team, levels = levels(team_list$value))
+for(tm in team_list_str) {
+  
+  col_name <-  paste(tm, "_elorating", sep="")
+  elotable[[col_name]][1] <- initial_elo %>% filter(team == tm) %>% select(elorating) %>% as.numeric()
+  
+  }
+
+
+
+#iterate through rows and columns, calculating elo rating as we go
 for(r in seq(1,n,by=1)) {
   
-  #elorating in row n is prior to the match, rating in row n+1 is after the match
   
-  #grab elorating for team 1 and team 2
-  elotable$ro_team_1[r] <- if_else(r == 1, 1311, !!rlang::sym(paste("elotable$", elotable$team_1[r], "_elorating", sep=""))[r])
-  
-  #calculate the ratings differential and adjust for home team (for each team)
-  
-  #calculate and store win expectancy from elorating for each team (use as an additional feature)
-  
-  #calculate the new elorating for each team based on the match result
-  
-  #loop through each country either write new elorating on result (if played) or write previous value
-  
-  
+    #elorating in row n is prior to the match, rating in row n+1 is after the match
+    
+    #grab elorating for team 1 and team 2 and store as a feature
+    col_name <-  paste(elotable$team_1[r], "_elorating", sep="")
+    elotable$team_1_rating[r] <- elotable[[col_name]][r]
+    col_name <-  paste(elotable$team_2[r], "_elorating", sep="")
+    elotable$team_2_rating[r] <- elotable[[col_name]][r]   
+    
+    #calculate the ratings differential and adjust for home team 
+    elotable$diffrating[r] <- if_else(elotable$is_team_1_home == 1,
+                                               elotable$team_1_rating[r] - elotable$team_2_rating[r] + 100,
+                                               elotable$team_1_rating[r] - elotable$team_2_rating[r]
+                                               )
+
+    
+    #calculate and store win expectancy from elorating for each team (use as an additional feature)
+    elotable$team_1_win_expect[r] <- 1 / (10 ^ (-elotable$diffrating[r] / 400) +1)
+    elotable$team_2_win_expect[r] <- 1 - elotable$team_1_win_expect[r]
+    
+    #calculate the new elorating for each team based on the match result
+    new_team_1_rating <- elotable$team_1_rating[r] + 
+      elotable$k_factor_adj[r] * (elotable$team_1_outcome[r] - elotable$team_1_win_expect[r])
+    new_team_2_rating <- elotable$team_2_rating[r] + 
+      elotable$k_factor_adj[r] * (elotable$team_2_outcome[r] - elotable$team_2_win_expect[r])
+    
+    
+    #loop through each country either write new elorating on result (if played) or write previous value
+    
+    if(r != n) {
+      for(tm in team_list_str) {
+        
+        col_name <-  paste(tm, "_elorating", sep="")
+        
+        #fill all teams down 1 row (catch all)
+        elotable[[col_name]][r+1] <- elotable[[col_name]][r]
+        
+        #check for team_1 match
+        if(elotable$team_1[r] == tm) {elotable[[col_name]][r+1] <- new_team_1_rating}
+        
+        #check for team_2 match
+        if(elotable$team_2[r] == tm) {elotable[[col_name]][r+1] <- new_team_2_rating}
+        
+      }
+    }
 }
- r=1
- elotable$ro_team_1[r] <- ifelse(r==1, 1311, elotable$England_elorating[1])
- paste("elotable$", elotable$team_1[r], "_elorating[", r, "]", sep="")
  
- t = "England"
- strng =  paste("elotable$", elotable$team_1[r], "_elorating", sep="")
- strng
- !!rlang::sym(strng)
- 
- summary(elotable$ro_team_1)
+#elotable %>% select(team_1_rating, team_2_rating, is_team_1_home, diffrating, team_1_win_expect, team_2_win_expect, Ukraine_elorating, Poland_elorating) %>% head
+
+elotable %>% tail
+
+
+
+
 
 ```
 
@@ -715,96 +756,96 @@ for(r in seq(1,n,by=1)) {
 Create MLR Learner
 
 ```{r Scratch pad for MLR dev}
-## 1) Define the task
-## Specify the type of analysis (e.g. classification) and provide data and response variable
-task = makeClassifTask(id = "football", data = df, target = "outcome")
-task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome"))
-
-#n = nrow(df)
-#train.set = sample(n, size = 2/3*n)
-#test.set = setdiff(1:n, train.set)
-
-
-fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
-#fv = generateFilterValuesData(task, method=c("kruskal.test"))
-#fv = generateFilterValuesData(task, method=c("information.gain"))
-#fv = generateFilterValuesData(task, method=c("chi.squared"))
-plotFilterValues(fv, feat.type.cols = TRUE, n.show = 20)
-#fv$data %>% arrange(desc(information.gain)) 
-#plotFilterValuesGGVIS(fv)
-
-
-
-
-## 2) Define the learner
-## Choose a specific algorithm (e.g. linear discriminant analysis)
-lrn = makeLearner("classif.randomForest", predict.type = "prob")
-lrn
-
-
-
-## 3) Fit the model
-## Train the learner on the task using a random subset of the data as training set
-#single run
-parallelStartSocket(2)
-model = train(lrn, task, subset = train.set)
-parallelStop()
-
-#resampling run
-cv = makeResampleDesc(method = "GrowingWindowCV", horizon = 0.2, initial.window = 0.5, skip = 0.2)
-parallelStartSocket(3)
-r = resample(learner=lrn, task=task, resampling = cv, measures = logloss)
-parallelStop()
-
-
-str(rin)
-
-#Create Resampling Strategy (custom based on CV - create CV, replace indicies with fixed)
-cv = makeResampleDesc(method="CV", iters=4)
-rin = makeResampleInstance(cv, task=task)
-#World Cup 2002
-rin$train.inds[[1]] <- 1:2754
-rin$test.inds[[1]] <- 2755:2818
-#World Cup 2006
-rin$train.inds[[2]] <- 1:5687
-rin$test.inds[[2]] <- 5688:5751
-#World Cup 2010
-rin$train.inds[[3]] <- 1:8698
-rin$test.inds[[3]] <- 8699:8762
-#World Cup 2014
-rin$train.inds[[4]] <- 1:11805
-rin$test.inds[[4]] <- 11806:11869
-
-
-
-
-## 4) Make predictions
-## Predict values of the response variable for new observations by the trained model
-## using the other part of the data as test set
-#pred = predict(model, task = task, subset = test.set)
-pred = r$pred
-
-pred$time
-
-iter6 = r$pred$data %>% filter(iter==6) 
-
-probability_matrix = tibble(win=iter6$prob.win, draw=iter6$prob.draw, lose=iter6$prob.lose)
-probability_matrix <- as.matrix(probability_matrix)
-measureACC(iter6$truth, iter6$response)
-measureMMCE(iter6$truth, iter6$response)
-measureLogloss(probability_matrix, iter6$truth)
-
-
-## 5) Evaluate the learner
-## Calculate the mean misclassification error and accuracy
-perfmeasures <- performance(pred, measures = list(mmce, acc, logloss))
-perfmeasures
-calculateConfusionMatrix(pred)
-
-
-
-#> mmce  acc 
-#> 0.04 0.96
+# ## 1) Define the task
+# ## Specify the type of analysis (e.g. classification) and provide data and response variable
+# task = makeClassifTask(id = "football", data = df, target = "outcome")
+# task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome"))
+# 
+# #n = nrow(df)
+# #train.set = sample(n, size = 2/3*n)
+# #test.set = setdiff(1:n, train.set)
+# 
+# 
+# fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
+# #fv = generateFilterValuesData(task, method=c("kruskal.test"))
+# #fv = generateFilterValuesData(task, method=c("information.gain"))
+# #fv = generateFilterValuesData(task, method=c("chi.squared"))
+# plotFilterValues(fv, feat.type.cols = TRUE, n.show = 20)
+# #fv$data %>% arrange(desc(information.gain)) 
+# #plotFilterValuesGGVIS(fv)
+# 
+# 
+# 
+# 
+# ## 2) Define the learner
+# ## Choose a specific algorithm (e.g. linear discriminant analysis)
+# lrn = makeLearner("classif.randomForest", predict.type = "prob")
+# lrn
+# 
+# 
+# 
+# ## 3) Fit the model
+# ## Train the learner on the task using a random subset of the data as training set
+# #single run
+# parallelStartSocket(2)
+# model = train(lrn, task, subset = train.set)
+# parallelStop()
+# 
+# #resampling run
+# cv = makeResampleDesc(method = "GrowingWindowCV", horizon = 0.2, initial.window = 0.5, skip = 0.2)
+# parallelStartSocket(3)
+# r = resample(learner=lrn, task=task, resampling = cv, measures = logloss)
+# parallelStop()
+# 
+# 
+# str(rin)
+# 
+# #Create Resampling Strategy (custom based on CV - create CV, replace indicies with fixed)
+# cv = makeResampleDesc(method="CV", iters=4)
+# rin = makeResampleInstance(cv, task=task)
+# #World Cup 2002
+# rin$train.inds[[1]] <- 1:2754
+# rin$test.inds[[1]] <- 2755:2818
+# #World Cup 2006
+# rin$train.inds[[2]] <- 1:5687
+# rin$test.inds[[2]] <- 5688:5751
+# #World Cup 2010
+# rin$train.inds[[3]] <- 1:8698
+# rin$test.inds[[3]] <- 8699:8762
+# #World Cup 2014
+# rin$train.inds[[4]] <- 1:11805
+# rin$test.inds[[4]] <- 11806:11869
+# 
+# 
+# 
+# 
+# ## 4) Make predictions
+# ## Predict values of the response variable for new observations by the trained model
+# ## using the other part of the data as test set
+# #pred = predict(model, task = task, subset = test.set)
+# pred = r$pred
+# 
+# pred$time
+# 
+# iter6 = r$pred$data %>% filter(iter==6) 
+# 
+# probability_matrix = tibble(win=iter6$prob.win, draw=iter6$prob.draw, lose=iter6$prob.lose)
+# probability_matrix <- as.matrix(probability_matrix)
+# measureACC(iter6$truth, iter6$response)
+# measureMMCE(iter6$truth, iter6$response)
+# measureLogloss(probability_matrix, iter6$truth)
+# 
+# 
+# ## 5) Evaluate the learner
+# ## Calculate the mean misclassification error and accuracy
+# perfmeasures <- performance(pred, measures = list(mmce, acc, logloss))
+# perfmeasures
+# calculateConfusionMatrix(pred)
+# 
+# 
+# 
+# #> mmce  acc 
+# #> 0.04 0.96
 ```
 
 
