@@ -773,6 +773,8 @@ for(r in seq(1,n,by=1)) {
 elotable_small <- elotable %>% select(team_1_rating, team_2_rating, diffrating, team_1_win_expect, team_2_win_expect)
 df <- df %>% cbind(elotable_small)
 
+#write out table for use later
+df %>% write_csv("full_dataset_for_learning.csv")
 
 #elotable %>% write_csv("elotable.csv")
 #elotable_small %>% write_csv("elotable_small.csv")
@@ -914,10 +916,19 @@ fv$data %>% arrange(desc(information.gain))
 
 lrn.rf = makeLearner("classif.randomForest", predict.type = "prob")
 
-lrn.naiveBayes = makeLearner("classif.naiveBayes", predict.type = "prob")
-
 lrn.xgb = makeLearner("classif.xgboost", predict.type="prob", nrounds=10)
 
+lrn.xgb1 = makeLearner("classif.xgboost", predict.type="prob")
+lrn.xgb2 = makeLearner("classif.xgboost", predict.type="prob")
+lrn.xgb3 = makeLearner("classif.xgboost", predict.type="prob")
+lrn.xgb4 = makeLearner("classif.xgboost", predict.type="prob")
+
+lrn.h2odeepDefault = makeLearner("classif.h2o.deeplearning", predict.type="prob")
+lrn.h2odeepRectifier = makeLearner("classif.h2o.deeplearning", predict.type="prob", activation = "Rectifier")
+lrn.h2odeepTanh = makeLearner("classif.h2o.deeplearning", predict.type="prob", activation = "Tanh")
+lrn.h2odeepMaxout = makeLearner("classif.h2o.deeplearning", predict.type="prob", activation = "Maxout")
+
+lrn.h2ogbm = makeLearner("classif.h2o.gbm", predict.type="prob")
 
 ```
 
@@ -952,11 +963,27 @@ resample.rf = resample(learner=lrn.rf, task=task, resampling = rin, measures = l
 parallelStop()
 
 parallelStartSocket(parallel::detectCores()-1)
-resample.naiveBayes = resample(learner=lrn.naiveBayes, task=task, resampling = rin, measures = logloss)
+resample.xgb = resample(learner=lrn.xgb, task=task, resampling = rin, measures = logloss)
 parallelStop()
 
 parallelStartSocket(parallel::detectCores()-1)
-resample.xgb = resample(learner=lrn.xgb, task=task, resampling = rin, measures = logloss)
+resample.h2odeepDefault = resample(learner=lrn.h2odeepDefault, task=task, resampling = rin, measures = logloss)
+parallelStop()
+
+parallelStartSocket(parallel::detectCores()-1)
+resample.h2odeepRectifier = resample(learner=lrn.h2odeepRectifier, task=task, resampling = rin, measures = logloss)
+parallelStop()
+
+parallelStartSocket(parallel::detectCores()-1)
+resample.h2odeepTanh = resample(learner=lrn.h2odeepTanh, task=task, resampling = rin, measures = logloss)
+parallelStop()
+
+parallelStartSocket(parallel::detectCores()-1)
+resample.h2odeepMaxout = resample(learner=lrn.h2odeepMaxout, task=task, resampling = rin, measures = logloss)
+parallelStop()
+
+parallelStartSocket(parallel::detectCores()-1)
+resample.h2ogbm = resample(learner=lrn.h2ogbm, task=task, resampling = rin, measures = logloss)
 parallelStop()
 
 ```
@@ -968,15 +995,29 @@ perfmeasures.rf <- performance(resample.rf$pred, measures = list(mmce, acc, logl
 perfmeasures.rf
 calculateConfusionMatrix(resample.rf$pred)
 
-perfmeasures.naiveBayes <- performance(resample.naiveBayes$pred, measures = list(mmce, acc, logloss))
-perfmeasures.naiveBayes
-calculateConfusionMatrix(resample.naiveBayes$pred)
-
 perfmeasures.xgb <- performance(resample.xgb$pred, measures = list(mmce, acc, logloss))
 perfmeasures.xgb
 calculateConfusionMatrix(resample.xgb$pred)
 
+perfmeasures.h2odeepDefault <- performance(resample.h2odeepDefault$pred, measures = list(mmce, acc, logloss))
+perfmeasures.h2odeepDefault
+calculateConfusionMatrix(resample.h2odeepDefault$pred)
 
+perfmeasures.h2odeepRectifier <- performance(resample.h2odeepRectifier$pred, measures = list(mmce, acc, logloss))
+perfmeasures.h2odeepRectifier
+calculateConfusionMatrix(resample.h2odeepRectifier$pred)
+
+perfmeasures.h2odeepTanh <- performance(resample.h2odeepTanh$pred, measures = list(mmce, acc, logloss))
+perfmeasures.h2odeepTanh
+calculateConfusionMatrix(resample.h2odeepTanh$pred)
+
+perfmeasures.h2odeepMaxout <- performance(resample.h2odeepMaxout$pred, measures = list(mmce, acc, logloss))
+perfmeasures.h2odeepMaxout
+calculateConfusionMatrix(resample.h2odeepMaxout$pred)
+
+perfmeasures.h2ogbm <- performance(resample.h2ogbm$pred, measures = list(mmce, acc, logloss))
+perfmeasures.h2ogbm
+calculateConfusionMatrix(resample.h2ogbm$pred)
 
 ```
 
@@ -1030,6 +1071,32 @@ evaluate the stacked learner
 
 https://github.com/mlr-org/mlr/issues/1266
 
+keep it simple:
+Create & tune randomforest
+Create & tune xgboost
+create & tune h2o deep learning with rectifier
+create & tune h2o deep learning with tanh
+create & tune h2o deep learning with maxout?
+create & tune h2o gbm
+
+
+
+save tune outputs to file
+save(xg_tr, "xg_tr.RData")
+
+
+create a stacked learner like:
+https://stackoverflow.com/questions/34920130/mlr-ensemble-models
+
+create multile versions of xgboost learner 
+
+deep learning parameter tuning
+https://shiring.github.io/machine_learning/2017/03/07/grid_search
+
+
+h2o gbm parameter tuning
+http://davpinto.com/h2o-tutorial/
+
 
 
 
@@ -1058,5 +1125,7 @@ logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals
 logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only) broken rolling logic during WC", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.578125, accuracy = 0.421875, logloss = 1.233476)
 logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only), no rolling during WC", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.468750, accuracy = 0.531250, logloss = 1.013074)
 logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only), no rolling during WC", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.4531250, accuracy = 0.5468750, logloss = 0.9970458)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.4570312, accuracy = 0.5429688, logloss = 0.9867248)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "xgboost untuned, rounds=10", mmce = 0.468750, accuracy = 0.531250, logloss = 1.008321)
 ```
 
