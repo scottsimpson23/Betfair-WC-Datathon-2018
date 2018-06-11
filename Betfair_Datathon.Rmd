@@ -999,6 +999,11 @@ perfmeasures.xgb <- performance(resample.xgb$pred, measures = list(mmce, acc, lo
 perfmeasures.xgb
 calculateConfusionMatrix(resample.xgb$pred)
 
+perfmeasures.xgbrf <- performance(mean(resample.rf$pred,resample.xgb$pred), measures = list(mmce, acc, logloss))
+perfmeasures.xgbrf
+calculateConfusionMatrix(resample.xgbrf$pred)
+
+
 perfmeasures.h2odeepDefault <- performance(resample.h2odeepDefault$pred, measures = list(mmce, acc, logloss))
 perfmeasures.h2odeepDefault
 calculateConfusionMatrix(resample.h2odeepDefault$pred)
@@ -1038,6 +1043,8 @@ xg_tr = tuneParams(learner = lrn.xgb, task = task, resampling = rin, measures = 
 parallelStop()
 
 lrn.xgb = setHyperPars(lrn.xgb, par.vals = xg_tr$x)
+save(xg_tr, file="tuned_XGB_params.RData")
+
 
 
 #randomForest
@@ -1053,6 +1060,28 @@ rf_tr = tuneParams(learner = lrn.rf, task = task, resampling = rin, measures = l
 parallelStop()
 
 lrn.rf = setHyperPars(lrn.rf, par.vals = rf_tr$x)
+save(rf_tr, file="tuned_RF_params.RData")
+
+```
+
+
+```{r}
+
+#h2o deep learning with rectifier activation function
+rf_ps <- makeParamSet(
+makeDiscreteParam(id = "hidden", values = list(a = c(20), b = c(30), c = c(40), d = c(50))), #single hidden layer
+makeIntegerParam("mtry", lower = 3, upper = 10),
+makeIntegerParam("nodesize", lower = 10, upper = 50)
+) 
+
+parallelStartSocket(parallel::detectCores()-1)
+rf_tc = makeTuneControlMBO(budget=100)
+rf_tr = tuneParams(learner = lrn.rf, task = task, resampling = rin, measures = logloss, control=rf_tc, par.set = rf_ps)
+parallelStop()
+
+lrn.rf = setHyperPars(lrn.rf, par.vals = rf_tr$x)
+
+
 ```
 
 
@@ -1127,5 +1156,7 @@ logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals
 logtablewc <- logtablewc %>% add_row(comments = "updated dataset (rolling totals only), no rolling during WC", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.4531250, accuracy = 0.5468750, logloss = 0.9970458)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "randomforest untuned", mmce = 0.4570312, accuracy = 0.5429688, logloss = 0.9867248)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "xgboost untuned, rounds=10", mmce = 0.468750, accuracy = 0.531250, logloss = 1.008321)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.453125, accuracy = 0.546875, logloss = 0.978265)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "xgboost tuned", mmce = 0.4296875, accuracy = 0.5703125, logloss = 0.9723495)
 ```
 
