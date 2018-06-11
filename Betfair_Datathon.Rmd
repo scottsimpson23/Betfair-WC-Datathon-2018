@@ -23,6 +23,7 @@ library(lubridate)
 library(parallelMap)
 library(RcppRoll)
 #ibrary(Fselector)
+library(h2o)
 ```
 
 Read Data
@@ -42,6 +43,8 @@ df$tournament <- parse_factor(df$tournament, levels = NULL)
 
 #Create Win/Loss/Draw outcome variable
 df <- df %>% mutate(outcome = if_else(team_1_goals>team_2_goals, "win", if_else(team_1_goals<team_2_goals, "lose", "draw")))
+df$outcome <- parse_factor(df$outcome, levels = c("lose", "draw", "win"))
+levels(df$outcome)
 
 #create numeric win/draw/lose vector for summing on
 df <- df %>% mutate(team_1_outcome = if_else(outcome == "win", 1, if_else(outcome == "draw", 0, -1)))
@@ -775,6 +778,7 @@ df <- df %>% cbind(elotable_small)
 
 #write out table for use later
 df %>% write_csv("full_dataset_for_learning.csv")
+save(df, file = "full_dataset_for_learning.Rdata")
 
 #elotable %>% write_csv("elotable.csv")
 #elotable_small %>% write_csv("elotable_small.csv")
@@ -923,10 +927,7 @@ lrn.xgb2 = makeLearner("classif.xgboost", predict.type="prob")
 lrn.xgb3 = makeLearner("classif.xgboost", predict.type="prob")
 lrn.xgb4 = makeLearner("classif.xgboost", predict.type="prob")
 
-lrn.h2odeepDefault = makeLearner("classif.h2o.deeplearning", predict.type="prob")
-lrn.h2odeepRectifier = makeLearner("classif.h2o.deeplearning", predict.type="prob", activation = "Rectifier")
-lrn.h2odeepTanh = makeLearner("classif.h2o.deeplearning", predict.type="prob", activation = "Tanh")
-lrn.h2odeepMaxout = makeLearner("classif.h2o.deeplearning", predict.type="prob", activation = "Maxout")
+lrn.h2odeep = makeLearner("classif.h2o.deeplearning", predict.type="prob")
 
 lrn.h2ogbm = makeLearner("classif.h2o.gbm", predict.type="prob")
 
@@ -966,25 +967,15 @@ parallelStartSocket(parallel::detectCores()-1)
 resample.xgb = resample(learner=lrn.xgb, task=task, resampling = rin, measures = logloss)
 parallelStop()
 
-parallelStartSocket(parallel::detectCores()-1)
-resample.h2odeepDefault = resample(learner=lrn.h2odeepDefault, task=task, resampling = rin, measures = logloss)
-parallelStop()
 
-parallelStartSocket(parallel::detectCores()-1)
-resample.h2odeepRectifier = resample(learner=lrn.h2odeepRectifier, task=task, resampling = rin, measures = logloss)
-parallelStop()
+h2o.init()
+resample.h2odeep = resample(learner=lrn.h2odeep, task=task, resampling = rin, measures = logloss)
+h2o.shutdown(prompt=FALSE)
 
-parallelStartSocket(parallel::detectCores()-1)
-resample.h2odeepTanh = resample(learner=lrn.h2odeepTanh, task=task, resampling = rin, measures = logloss)
-parallelStop()
-
-parallelStartSocket(parallel::detectCores()-1)
-resample.h2odeepMaxout = resample(learner=lrn.h2odeepMaxout, task=task, resampling = rin, measures = logloss)
-parallelStop()
-
-parallelStartSocket(parallel::detectCores()-1)
+h2o.init()
 resample.h2ogbm = resample(learner=lrn.h2ogbm, task=task, resampling = rin, measures = logloss)
-parallelStop()
+h2o.shutdown(prompt=FALSE)
+
 
 ```
 
@@ -999,26 +990,11 @@ perfmeasures.xgb <- performance(resample.xgb$pred, measures = list(mmce, acc, lo
 perfmeasures.xgb
 calculateConfusionMatrix(resample.xgb$pred)
 
-perfmeasures.xgbrf <- performance(mean(resample.rf$pred,resample.xgb$pred), measures = list(mmce, acc, logloss))
-perfmeasures.xgbrf
-calculateConfusionMatrix(resample.xgbrf$pred)
 
+perfmeasures.h2odeep <- performance(resample.h2odeep$pred, measures = list(mmce, acc, logloss))
+perfmeasures.h2odeep
+calculateConfusionMatrix(resample.h2odeep$pred)
 
-perfmeasures.h2odeepDefault <- performance(resample.h2odeepDefault$pred, measures = list(mmce, acc, logloss))
-perfmeasures.h2odeepDefault
-calculateConfusionMatrix(resample.h2odeepDefault$pred)
-
-perfmeasures.h2odeepRectifier <- performance(resample.h2odeepRectifier$pred, measures = list(mmce, acc, logloss))
-perfmeasures.h2odeepRectifier
-calculateConfusionMatrix(resample.h2odeepRectifier$pred)
-
-perfmeasures.h2odeepTanh <- performance(resample.h2odeepTanh$pred, measures = list(mmce, acc, logloss))
-perfmeasures.h2odeepTanh
-calculateConfusionMatrix(resample.h2odeepTanh$pred)
-
-perfmeasures.h2odeepMaxout <- performance(resample.h2odeepMaxout$pred, measures = list(mmce, acc, logloss))
-perfmeasures.h2odeepMaxout
-calculateConfusionMatrix(resample.h2odeepMaxout$pred)
 
 perfmeasures.h2ogbm <- performance(resample.h2ogbm$pred, measures = list(mmce, acc, logloss))
 perfmeasures.h2ogbm
@@ -1067,19 +1043,50 @@ save(rf_tr, file="tuned_RF_params.RData")
 
 ```{r}
 
-#h2o deep learning with rectifier activation function
-rf_ps <- makeParamSet(
-makeDiscreteParam(id = "hidden", values = list(a = c(20), b = c(30), c = c(40), d = c(50))), #single hidden layer
-makeIntegerParam("mtry", lower = 3, upper = 10),
-makeIntegerParam("nodesize", lower = 10, upper = 50)
+#h2o deep learning 
+getParamSet("classif.h2o.deeplearning")
+
+h2odeep_ps <- makeParamSet(
+makeDiscreteParam(id = "activation", values = c("Rectifier", "Maxout", "Tanh", "RectifierWithDropout", "MaxoutWithDropout", "TanhWithDropout")),
+makeDiscreteParam(id = "hidden", values = list(a = c(10), b = c(30), c = c(40), d = c(50), e = c(100), f = c(200), g= c(50,50), h = c(10,10))), 
+makeNumericParam("l1", lower = 0, upper = 1e-3),
+makeNumericParam("l2", lower = 0, upper = 1e-3)
 ) 
 
-parallelStartSocket(parallel::detectCores()-1)
-rf_tc = makeTuneControlMBO(budget=100)
-rf_tr = tuneParams(learner = lrn.rf, task = task, resampling = rin, measures = logloss, control=rf_tc, par.set = rf_ps)
-parallelStop()
+#parallelStartSocket(parallel::detectCores()-1)
+h2o.init()
+h2odeep_tc = makeTuneControlMBO(budget=100)
+h2odeep_tr = tuneParams(learner = lrn.h2odeep, task = task, resampling = rin, measures = logloss, control=h2odeep_tc, par.set = h2odeep_ps)
+h2o.shutdown(prompt=FALSE)
+#parallelStop()
 
-lrn.rf = setHyperPars(lrn.rf, par.vals = rf_tr$x)
+save(h2odeep_tr, file="tuned_h2odeep_params.RData")
+lrn.h2odeep = setHyperPars(lrn.h2odeep, par.vals = h2odeep_tr$x)
+
+
+```
+
+
+```{r}
+#h2o gbm
+getParamSet("classif.h2o.gbm")
+
+h2ogbm_ps <- makeParamSet(
+makeIntegerParam("ntrees", lower=1,upper=500),
+makeDiscreteParam("max_depth", seq(2, 24, by = 2)),
+makeDiscreteParam("min_rows",seq(10, 150, by = 10)),
+makeDiscreteParam("sample_rate", seq(0.1, 1, by = 0.1)),
+makeDiscreteParam("nbins", round(2 ^ seq(2, 6, length = 15)))
+)
+
+h2o.init()
+h2ogbm_tc = makeTuneControlMBO(budget=100)
+h2ogbm_tr = tuneParams(learner = lrn.h2ogbm, task = task, resampling = rin, measures = logloss, control=h2ogbm_tc, par.set = h2ogbm_ps)
+h2o.shutdown(prompt=FALSE)
+
+save(h2ogbm_tr, file="tuned_h2ogbm_params.RData")
+lrn.h2ogbm = setHyperPars(lrn.h2ogbm, par.vals = h2ogbm_tr$x)
+
 
 
 ```
@@ -1158,5 +1165,9 @@ logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "xgboost untuned, rounds=10", mmce = 0.468750, accuracy = 0.531250, logloss = 1.008321)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "randomforest tuned", mmce = 0.453125, accuracy = 0.546875, logloss = 0.978265)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "xgboost tuned", mmce = 0.4296875, accuracy = 0.5703125, logloss = 0.9723495)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o deeplearning default untuned", mmce = 0.5585938, accuracy = 0.4414062, logloss = 1.1757131)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o gbm default untuned", mmce = 0.4648438, accuracy = 0.5351562, logloss = 1.0230928)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o deeplearning tuned 1 round", mmce = 0.4453125, accuracy = 0.5546875, logloss = 1.0356291)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o gbm tuned 1 round", mmce = 0.4843750, accuracy = 0.5156250, logloss = 0.9867435)
 ```
 
