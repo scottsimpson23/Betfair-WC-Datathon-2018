@@ -57,7 +57,8 @@ df$days <- parse_integer(df$days)
 rm(start_date)
 
 #create year field
-df <- df %>% mutate(year = year(date))
+df <- df %>% mutate(year = lubridate::year(date))
+
 
 #drop date field and goals
 df <- df %>% select(-date)
@@ -942,8 +943,8 @@ lrn.h2ogbm = makeLearner("classif.h2o.gbm", predict.type="prob")
 
 base.learners = list(
   lrn.rf,
-  lrn.xgb
-
+  lrn.xgb,
+  lrn.h2odeep
 )
 
 lrn.stack = makeStackedLearner(base.learners, super.learner = NULL, predict.type = "prob",
@@ -998,7 +999,9 @@ h2o.shutdown(prompt=FALSE)
 
 
 parallelStartSocket(parallel::detectCores()-1)
+h2o.init()
 resample.stack = resample(learner=lrn.stack, task=task, resampling = rin, measures = logloss)
+h2o.shutdown(prompt=FALSE)
 parallelStop()
 
 ```
@@ -1061,10 +1064,10 @@ xg_tr = tuneParams(learner = lrn.xgb, task = task, resampling = rin, measures = 
 parallelStop()
 
 lrn.xgb = setHyperPars(lrn.xgb, par.vals = xg_tr$x)
-lrn.xgb1 = setHyperPars(lrn.xgb1, par.vals = xg_tr$x)
-lrn.xgb2 = setHyperPars(lrn.xgb2, par.vals = xg_tr$x)
-lrn.xgb3 = setHyperPars(lrn.xgb3, par.vals = xg_tr$x)
-lrn.xgb4 = setHyperPars(lrn.xgb4, par.vals = xg_tr$x)
+#lrn.xgb1 = setHyperPars(lrn.xgb1, par.vals = xg_tr$x)
+#lrn.xgb2 = setHyperPars(lrn.xgb2, par.vals = xg_tr$x)
+#lrn.xgb3 = setHyperPars(lrn.xgb3, par.vals = xg_tr$x)
+#lrn.xgb4 = setHyperPars(lrn.xgb4, par.vals = xg_tr$x)
 save(xg_tr, file="tuned_XGB_params.RData")
 
 
@@ -1100,7 +1103,7 @@ makeNumericParam("l2", lower = 0, upper = 1e-3)
 h2o.init()
 h2odeep_tc = makeTuneControlMBO(budget=100)
 h2odeep_tr = tuneParams(learner = lrn.h2odeep, task = task, resampling = rin, measures = logloss, control=h2odeep_tc, par.set = h2odeep_ps)
-h2o.shutdown(prompt=FALSE)
+#h2o.shutdown(prompt=FALSE)
 #parallelStop()
 
 save(h2odeep_tr, file="tuned_h2odeep_params.RData")
@@ -1114,12 +1117,14 @@ h2ogbm_ps <- makeParamSet(
 makeIntegerParam("ntrees", lower=1,upper=500),
 makeDiscreteParam("max_depth", seq(2, 24, by = 2)),
 makeDiscreteParam("min_rows",seq(10, 150, by = 10)),
-makeDiscreteParam("sample_rate", seq(0.1, 1, by = 0.1)),
+#makeDiscreteParam("sample_rate", seq(0.1, 1, by = 0.1)),
 makeDiscreteParam("nbins", round(2 ^ seq(2, 6, length = 15)))
 )
 
-h2o.init()
-h2ogbm_tc = makeTuneControlMBO(budget=100)
+h2ogbm.mc <- mlrMBO::makeMBOControl(save.on.disk.at = 1:100 )
+
+h2o.init(nthreads = parallel::detectCores()-1)
+h2ogbm_tc = makeTuneControlMBO(budget=100, mbo.control = h2ogbm.mc)
 h2ogbm_tr = tuneParams(learner = lrn.h2ogbm, task = task, resampling = rin, measures = logloss, control=h2ogbm_tc, par.set = h2ogbm_ps)
 h2o.shutdown(prompt=FALSE)
 
@@ -1206,10 +1211,12 @@ logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "xgboost tuned", mmce = 0.4296875, accuracy = 0.5703125, logloss = 0.9723495)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o deeplearning default untuned", mmce = 0.5585938, accuracy = 0.4414062, logloss = 1.1757131)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o gbm default untuned", mmce = 0.4648438, accuracy = 0.5351562, logloss = 1.0230928)
-logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o deeplearning tuned 1 round", mmce = 0.4453125, accuracy = 0.5546875, logloss = 1.0356291)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o deeplearning tuned 1 round only", mmce = 0.4453125, accuracy = 0.5546875, logloss = 1.0356291)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o gbm tuned 1 round", mmce = 0.4843750, accuracy = 0.5156250, logloss = 0.9867435)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "stacked rf and xgb hill climb", mmce = 0.4296875, accuracy = 0.5703125, logloss = 0.9723495)
 logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "stacked rf and xgb average", mmce = 0.4218750, accuracy = 0.5781250, logloss = 0.9644549)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "h2o deeplearning tuned", mmce = 0.4218750, accuracy = 0.5781250, logloss = 0.9737596)
+logtablewc <- logtablewc %>% add_row(comments = "full set with ELO ratings, data to 20180609", CV = "4 x world cup rounds only, growing window", learner = "stacked rf, xgb, h2odeep average", mmce = 0.4375000, accuracy = 0.5625000, logloss = 0.9615743)
 
 View(logtablewc)
 
