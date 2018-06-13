@@ -1050,8 +1050,9 @@ model_stacked <- train(lrn.stack, task)
 
 #model_stacked
 
-#predict & save
-prediction_stacked_1 <- prediction_stacked
+#predict & save, 100 rep bagging for the final probs
+
+#prediction_stacked_1 <- prediction_stacked
 prediction_stacked <- predict(model_stacked, task = task_predict)
 pred_stack = list()
 win_prob <- prediction_stacked$data$prob.win
