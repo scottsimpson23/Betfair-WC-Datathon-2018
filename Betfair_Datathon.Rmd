@@ -1048,16 +1048,32 @@ task_predict = dropFeatures(task = task_predict, c("team_1", "team_2", "team_1_g
 h2o.init(nthreads = parallel::detectCores()-1)
 model_stacked <- train(lrn.stack, task)
 
-model_stacked
+#model_stacked
 
 #predict & save
+prediction_stacked_1 <- prediction_stacked
 prediction_stacked <- predict(model_stacked, task = task_predict)
-h2o.shutdown(prompt = FALSE)
+pred_stack = list()
+win_prob <- prediction_stacked$data$prob.win
+draw_prob <- prediction_stacked$data$prob.draw
+lose_prob <- prediction_stacked$data$prob.lose
+win_prob <- 0
+draw_prob <- 0
+lose_prob <- 0
+
+for(i in 1:100) {
+  pred_stack[[i]] <- predict(model_stacked, task = task_predict)
+  win_prob <- win_prob + pred_stack[[i]]$data$prob.win
+}
+win_prob <- win_prob / 100
+draw_prob <- draw_prob / 100
+lose_prob <- lose_prob / 100
+
 prediction_stacked
 
-prediction_df <- tibble(df_test$team_1, df_test$team_2, prediction_stacked$data$prob.win, prediction_stacked$data$prob.draw, prediction_stacked$data$prob.lose)
+prediction_df <- tibble(df_test$team_1, df_test$team_2, win_prob, draw_prob, lose_prob)
 prediction_df %>% write_csv("prediction_3_stacked.csv")
-
+h2o.shutdown(prompt = FALSE)
 
 #train XGB
 #h2o.init(nthreads = parallel::detectCores()-1)
@@ -1066,6 +1082,7 @@ model_xgb <- train(lrn.xgb, task)
 model_xgb
 
 #predict & save
+prediction_xgb1 <- prediction_xgb
 prediction_xgb <- predict(model_xgb, task = task_predict)
 prediction_xgb
 
@@ -1080,6 +1097,7 @@ model_rf <- train(lrn.rf, task)
 model_rf
 
 #predict & save
+prediction_rf1 <- prediction_rf
 prediction_rf <- predict(model_rf, task = task_predict)
 prediction_rf
 
@@ -1093,10 +1111,12 @@ model_h2odeep <- train(lrn.h2odeep, task)
 model_h2odeep
 
 #predict & save
+prediction_h2odeep1 <- prediction_h2odeep
 prediction_h2odeep <- predict(model_h2odeep, task = task_predict)
-h2o.shutdown(prompt = FALSE)
+
 prediction_h2odeep
 
+h2o.shutdown(prompt = FALSE)
 prediction_df <- tibble(df_test$team_1, df_test$team_2, prediction_h2odeep$data$prob.win, prediction_h2odeep$data$prob.draw, prediction_h2odeep$data$prob.lose)
 prediction_df %>% write_csv("prediction_h2odeep.csv")
 
