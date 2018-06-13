@@ -1064,6 +1064,8 @@ lose_prob <- 0
 for(i in 1:100) {
   pred_stack[[i]] <- predict(model_stacked, task = task_predict)
   win_prob <- win_prob + pred_stack[[i]]$data$prob.win
+  lose_prob <- lose_prob + pred_stack[[i]]$data$prob.lose
+  draw_prob <- draw_prob + pred_stack[[i]]$data$prob.draw
 }
 win_prob <- win_prob / 100
 draw_prob <- draw_prob / 100
