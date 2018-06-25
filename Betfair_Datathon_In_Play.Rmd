@@ -26,6 +26,7 @@ library(RcppRoll)
 library(FSelector)
 library(h2o)
 library(openxlsx)
+library(tictoc)
 ```
 
 Read Data
@@ -173,53 +174,6 @@ rm(random_loss_prob)
 
 
 
-Scratch Pad
-
-```{r Scratch Pad, eval:FALSE}
-
-
-# #create list of unique countries - already have it, team_list
-# team_list_small <- list("England", "France", "Spain")
-# 
-# team <- "England"
-# 
-# df %>% filter(team_1 == "England" | team_2 == "England") %>% 
-#   mutate(!!paste(team, "_goals", sep="") := ifelse(team_1 == "England", team_1_goals, team_2_goals)) #%>% 
-#   #select(team_1, team_2, team_1_goals,team_2_goals, England_goals) %>% head()
-# 
-# df %>% filter(team_1 == "England" | team_2 == "England") %>% 
-#   mutate(!!paste(team, "_outcome", sep="") := ifelse(team_1 == "England", team_1_outcome, team_2_outcome)) %>% 
-#   select(team_1, team_2, team_1_outcome,team_2_outcome, England_outcome) %>% head()
-# 
-# 
-# 
-# 
-# create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_outcome, team_2_outcome, England_outcome) %>%
-#   filter(team_1 == "England" | team_2 == "England") %>% head
-# 
-# create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_goals, team_2_goals, England_goals) %>%
-#   filter(team_1 == "England" | team_2 == "England") %>% head
-# 
-# create_team_outcome_columns("England") %>% select(team_1, team_2, team_1_goals, team_2_goals, England_opponent_goals) %>%
-#   filter(team_1 == "England" | team_2 == "England") %>% head
-# 
-# #create list of unique countries - already have it, team_list
-# 
-# 
-# team <- "England"
-# 
-# rm(test_out_frame)
-# 
-# 
-# test_out_frame %>% filter(team_1 == "England" | team_2 == "England") %>% 
-#   select(team_1, team_2, contains("goals")) %>% head()
-
-#levels(team_list$value) %>% head()
-
-
-```
-
-
 
 ```{r Create country specific columns for outcome and for/against goals}
 
@@ -242,108 +196,22 @@ create_team_outcome_columns <- function(team_name) {
   
 }
 
+tic.clearlog()
+tic("create country specific columns for outcome and for/against")
 #use lmap to apply the function to each list item, returning three columns for each list item bound into a tbl
 temp_out_frame <- team_list$value %>% lmap(create_team_outcome_columns) 
 #add this to the main dataframe
 df <- cbind(df, temp_out_frame)
 #clean up
 rm(temp_out_frame)
+toc(log = TRUE)
 
 
 
 ```
 
 
-```{r Scratchpad for writing rolling features logic}
-# #WC 2002
-# rin$train.inds[[1]] <- 1:2754
-# rin$test.inds[[1]] <- 2755:2818
-# #World Cup 2006
-# rin$train.inds[[2]] <- 1:5687
-# rin$test.inds[[2]] <- 5688:5751
-# #World Cup 2010
-# rin$train.inds[[3]] <- 1:8698
-# rin$test.inds[[3]] <- 8699:8762
-# #World Cup 2014
-# rin$train.inds[[4]] <- 1:11805
-# rin$test.inds[[4]] <- 11806:11869
-# 
-# df %>% select(tournament.World.Cup) %>%
-#   filter(row_number() %in% 2755:2818)
-# 
-# df %>% mutate(id = row_number()) %>%
-#   select(tournament.World.Cup, id) %>%
-#   filter(tournament.World.Cup == 1)
-# 
-# 
-# 
-# 
-# 
-# 
-# #Create WC index for join
-# df <- df %>%   
-#   filter() %>%
-#   mutate(joindex = ifelse(row_number() %in% 2755:2818, "WC2002", 0))
-# df <- df %>%   
-#   filter() %>%
-#   mutate(joindex = ifelse(row_number() %in% 5688:5751, "WC2006", 0))
-# df <- df %>%   
-#   filter() %>%
-#   mutate(joindex = ifelse(row_number() %in% 8699:8762, "WC2010", 0))
-# df <- df %>%   
-#   filter() %>%
-#   mutate(joindex = ifelse(row_number() %in% 11806:11869, "WC2014", 0))
-# 
-# 
-# #Create table of pre-WC values
-# pre_wc <- df %>%
-#   select(starts_with("team_1_rolling"), starts_with("team_2_rolling")) %>%
-#   filter(row_number() %in% c(2754,5687,8698,11805))
-# 
-# joindex <- tibble(joindex = c("WC2002", "WC2006", "WC2010", "WC2014"))
-# pre_wc <-  bind_cols(pre_wc, joindex)
-# 
-# tst <- df
-# df.back <- df
-# df <- tst
-# tst <- df.back
-# 
-# tst <- left_join(x = tst, y = pre_wc, copy = TRUE)
-# 
-# tst <- mutate_at(.vars = starts_with("team_1_rolling"), .funs = ifelse(joindex != is.na(), NA, 0))
-#  
-# tst %>% 
-#   filter(joindex != "WC2002") %>% head
-# 
-# #generate list of columns
-# col_list <- tst %>%
-#   select(starts_with("team_1_rolling"), starts_with("team_2_rolling")) %>%
-#   colnames()
-# 
-# for(cn in col_list){
-#   
-#   tst <- tst %>%   
-#     mutate(!!cn := ifelse(row_number() %in% 2755:2818, NA, !!rlang::sym(cn)))
-#   tst <- tst %>%   
-#     mutate(!!cn := ifelse(row_number() %in% 5688:5751, NA, !!rlang::sym(cn)))
-#   tst <- tst %>%   
-#     mutate(!!cn := ifelse(row_number() %in% 8699:8762, NA, !!rlang::sym(cn)))
-#   tst <- tst %>%   
-#     mutate(!!cn := ifelse(row_number() %in% 11806:11869, NA, !!rlang::sym(cn)))
-#   tst <- tst %>% fill(!!cn)
-#   
-# }
-#   
-# 
-# tst %>% select(starts_with("team_1_rolling"), starts_with("team_2_rolling")) %>%
-#   filter(row_number() %in% 11800:11869)
-# 
 
-
-#iterate through list
-
-
-```
 
 ```{r Rolling Features Logic, message=FALSE}
 
@@ -392,7 +260,7 @@ create_rolling_sums_by_team <- function (team_name, rolling_window){
   
 }
 
-
+tic("create rolling features")
 parallelStartSocket(3)
 for(numb in c(2,5,10,20,50)) {
 
@@ -504,6 +372,7 @@ parallelStop()
 
 #remove transitory columns from the main DF
 df <- df %>% select(-ends_with("_stage"))
+toc(log = TRUE)
 
 #df %>% tail
 
@@ -513,97 +382,12 @@ df <- df %>% select(-ends_with("_stage"))
 ```
 
 
-```{r Evaluation/scratch code for checking}
-#evaluation code, creates a file just for England to check the numbers
-df_england <- df %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(team_1, team_2, team_1_goals, team_2_goals, is_team_1_home, is_neutral, outcome, team_1_outcome, team_2_outcome, tournament.World.Cup, starts_with("England"), team_1_rolling_2_opponentgoals, team_2_rolling_2_opponentgoals)
-staging_frame1 <- df %>% select(team_1, team_2) %>%
-  bind_cols(staging_frame1)
-staging_frame2 <- df %>% select(team_1, team_2) %>%
-  bind_cols(staging_frame2)
-df_england <- staging_frame1 %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(ends_with("England")) %>%
-  bind_cols(df_england)
-df_england <- staging_frame2 %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(ends_with("England")) %>%
-  bind_cols(df_england)
-df_england <- temp_out_frame %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(starts_with("England")) %>%
-  bind_cols(df_england)
 
-df_england %>% write_csv(path = "england.csv")
-
-temp_out_frame <- df %>% select(tournament.World.Cup) %>% cbind(temp_out_frame)
-
-temp_out_frame %>% select(team_1, team_2, tournament.World.Cup, starts_with("England")) %>% write_csv(path="all_short.csv")
-
-
-df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
-filter(tournament.World.Cup == 1) %>%
-  select(starts_with("Italy")) %>%
-  mutate(rownum = row_number())
-
-df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
-filter(tournament.World.Cup == 1) %>%
-  select(ends_with("stage")) %>%
-  mutate(sums = rowSums(.)) %>%
-  select(sums)
-
-
-#save the df out
-df %>% write_csv(path = "df_with_rolling_features_for_learner.csv")
-  
-
-#evaluation code, creates a file just for England to check the numbers
-df_england <- df %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(team_1, team_2, team_1_goals, team_2_goals, is_team_1_home, is_neutral, outcome, team_1_outcome, team_2_outcome, tournament.World.Cup, starts_with("England"), team_1_rolling_2_opponentgoals, team_2_rolling_2_opponentgoals)
-staging_frame1 <- df %>% select(team_1, team_2) %>%
-  bind_cols(staging_frame1)
-staging_frame2 <- df %>% select(team_1, team_2) %>%
-  bind_cols(staging_frame2)
-df_england <- staging_frame1 %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(ends_with("England")) %>%
-  bind_cols(df_england)
-df_england <- staging_frame2 %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(ends_with("England")) %>%
-  bind_cols(df_england)
-df_england <- temp_out_frame %>% 
-  filter(team_1 == "England" | team_2 == "England") %>%
-  select(starts_with("England")) %>%
-  bind_cols(df_england)
-
-df_england %>% write_csv(path = "england.csv")
-
-temp_out_frame <- df %>% select(tournament.World.Cup) %>% cbind(temp_out_frame)
-
-temp_out_frame %>% select(team_1, team_2, tournament.World.Cup, starts_with("England")) %>% write_csv(path="all_short.csv")
-
-
-df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
-filter(tournament.World.Cup == 1) %>%
-  select(starts_with("Italy")) %>%
-  mutate(rownum = row_number())
-
-df %>% select(tournament.World.Cup) %>% bind_cols(temp_out_frame) %>% 
-filter(tournament.World.Cup == 1) %>%
-  select(ends_with("stage")) %>%
-  mutate(sums = rowSums(.)) %>%
-  select(sums)
-
-
-
-```
 
 
 ```{r Create ELO metrics, warning=FALSE}
 
+tic("create ELO metrics")
 
 #setup ELO table
 rm(elotable)
@@ -682,7 +466,7 @@ for(r in seq(1,n,by=1)) {
     elotable$team_2_rating[r] <- elotable[[col_name]][r]   
     
     #calculate the ratings differential and adjust for home team 
-    elotable$diffrating[r] <- if_else(elotable$is_team_1_home == 1,
+    elotable$diffrating[r] <- if_else(elotable$is_team_1_home[r] == 1,
                                                elotable$team_1_rating[r] - elotable$team_2_rating[r] + 100,
                                                elotable$team_1_rating[r] - elotable$team_2_rating[r]
                                                )
@@ -779,105 +563,14 @@ save(df, file = "full_dataset_for_learning.Rdata")
 
 #team_list_str
 
-
+toc(log = TRUE)
 ```
 
 
 
 Create MLR Learner
 
-```{r Scratch pad for MLR dev}
-# ## 1) Define the task
-# ## Specify the type of analysis (e.g. classification) and provide data and response variable
-# task = makeClassifTask(id = "football", data = df, target = "outcome")
-# task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome"))
-# 
-# #n = nrow(df)
-# #train.set = sample(n, size = 2/3*n)
-# #test.set = setdiff(1:n, train.set)
-# 
-# 
-# fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
-# #fv = generateFilterValuesData(task, method=c("kruskal.test"))
-# #fv = generateFilterValuesData(task, method=c("information.gain"))
-# #fv = generateFilterValuesData(task, method=c("chi.squared"))
-# plotFilterValues(fv, feat.type.cols = TRUE, n.show = 20)
-# #fv$data %>% arrange(desc(information.gain)) 
-# #plotFilterValuesGGVIS(fv)
-# 
-# 
-# 
-# 
-# ## 2) Define the learner
-# ## Choose a specific algorithm (e.g. linear discriminant analysis)
-# lrn = makeLearner("classif.randomForest", predict.type = "prob")
-# lrn
-# 
-# 
-# 
-# ## 3) Fit the model
-# ## Train the learner on the task using a random subset of the data as training set
-# #single run
-# parallelStartSocket(2)
-# model = train(lrn, task, subset = train.set)
-# parallelStop()
-# 
-# #resampling run
-# cv = makeResampleDesc(method = "GrowingWindowCV", horizon = 0.2, initial.window = 0.5, skip = 0.2)
-# parallelStartSocket(3)
-# r = resample(learner=lrn, task=task, resampling = cv, measures = logloss)
-# parallelStop()
-# 
-# 
-# str(rin)
-# 
-# #Create Resampling Strategy (custom based on CV - create CV, replace indicies with fixed)
-# cv = makeResampleDesc(method="CV", iters=4)
-# rin = makeResampleInstance(cv, task=task)
-# #World Cup 2002
-# rin$train.inds[[1]] <- 1:2754
-# rin$test.inds[[1]] <- 2755:2818
-# #World Cup 2006
-# rin$train.inds[[2]] <- 1:5687
-# rin$test.inds[[2]] <- 5688:5751
-# #World Cup 2010
-# rin$train.inds[[3]] <- 1:8698
-# rin$test.inds[[3]] <- 8699:8762
-# #World Cup 2014
-# rin$train.inds[[4]] <- 1:11805
-# rin$test.inds[[4]] <- 11806:11869
-# 
-# 
-# 
-# 
-# ## 4) Make predictions
-# ## Predict values of the response variable for new observations by the trained model
-# ## using the other part of the data as test set
-# #pred = predict(model, task = task, subset = test.set)
-# pred = r$pred
-# 
-# pred$time
-# 
-# iter6 = r$pred$data %>% filter(iter==6) 
-# 
-# probability_matrix = tibble(win=iter6$prob.win, draw=iter6$prob.draw, lose=iter6$prob.lose)
-# probability_matrix <- as.matrix(probability_matrix)
-# measureACC(iter6$truth, iter6$response)
-# measureMMCE(iter6$truth, iter6$response)
-# measureLogloss(probability_matrix, iter6$truth)
-# 
-# 
-# ## 5) Evaluate the learner
-# ## Calculate the mean misclassification error and accuracy
-# perfmeasures <- performance(pred, measures = list(mmce, acc, logloss))
-# perfmeasures
-# calculateConfusionMatrix(pred)
-# 
-# 
-# 
-# #> mmce  acc 
-# #> 0.04 0.96
-```
+
 
 
 ```{r Split the dataset into train and test}
@@ -886,9 +579,9 @@ Create MLR Learner
 df_train_test <- df
 
 #split
-df_test <- df %>% slice(14929:14959)
+df_test <- df %>% slice(14944:14959)
 df_test %>% select(team_1, team_2) %>% head
-df <- df %>% slice(1:14928)
+df <- df %>% slice(1:14943)
   
 
 ```
@@ -904,13 +597,13 @@ df <- df %>% slice(1:14928)
 task = makeClassifTask(id = "football", data = df, target = "outcome")
 task = dropFeatures(task = task, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome", "team_1_index", "team_2_index"))
 
-fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
+#fv = generateFilterValuesData(task, method=c("information.gain", "chi.squared", "kruskal.test"))
 #fv = generateFilterValuesData(task, method=c("kruskal.test"))
 #fv = generateFilterValuesData(task, method=c("information.gain"))
 #fv = generateFilterValuesData(task, method=c("chi.squared"))
 #fv = generateFilterValuesData(task, method=c("randomForest.importance"))
-plotFilterValues(fv, feat.type.cols = TRUE, n.show = 20)
-fv$data %>% arrange(desc(information.gain)) 
+#plotFilterValues(fv, feat.type.cols = TRUE, n.show = 20)
+#fv$data %>% arrange(desc(information.gain)) 
 
 ###Code to filter features here:
 #task = filterFeatures(task, method="information.gain", perc = 0.5) - made for worse accuracy
@@ -1024,6 +717,7 @@ calculateConfusionMatrix(resample.stack$pred)
 
 ```{r Train the learner & make predictions}
 
+
 #load tunings & set
 load("tuned_XGB_params_inplay.RData")
 lrn.xgb = setHyperPars(lrn.xgb, par.vals = xg_tr$x)
@@ -1038,9 +732,8 @@ lrn.h2odeep = setHyperPars(lrn.h2odeep, par.vals = h2odeep_tr$x)
 task_predict = makeClassifTask(id = "football", data = df_test, target = "outcome")
 task_predict = dropFeatures(task = task_predict, c("team_1", "team_2", "team_1_goals", "team_2_goals", "team_1_outcome", "team_2_outcome", "team_1_index", "team_2_index"))
 
-
 #stacked learner
-
+tic("train the learner & make predictions")
 #train stacked
 h2o.init(nthreads = parallel::detectCores()-1)
 model_stacked <- train(lrn.stack, task)
@@ -1072,9 +765,9 @@ lose_prob <- lose_prob / 100
 prediction_stacked
 
 prediction_df <- tibble(df_test$team_1, df_test$team_2, win_prob, draw_prob, lose_prob)
-prediction_df %>% write_csv("prediction_20180620_stacked.csv")
+prediction_df %>% write_csv("prediction_20180625_stacked.csv")
 h2o.shutdown(prompt = FALSE)
-
+toc(log=TRUE)
 
 ```
 
