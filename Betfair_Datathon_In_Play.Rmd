@@ -579,10 +579,12 @@ Create MLR Learner
 df_train_test <- df
 
 #split
-df_test <- df %>% slice(14944:14959)
-df_test %>% select(team_1, team_2) %>% head
-df <- df %>% slice(1:14943)
-  
+df_test <- df %>% slice(14968:14971)
+df_test %>% select(team_1, team_2) 
+df <- df %>% slice(1:14967)
+
+df_train_test %>% select(team_1, team_2) %>% tail
+
 
 ```
 
@@ -765,7 +767,7 @@ lose_prob <- lose_prob / 100
 prediction_stacked
 
 prediction_df <- tibble(df_test$team_1, df_test$team_2, win_prob, draw_prob, lose_prob)
-prediction_df %>% write_csv("prediction_20180625_stacked.csv")
+prediction_df %>% write_csv("prediction_20180704_stacked.csv")
 h2o.shutdown(prompt = FALSE)
 toc(log=TRUE)
 
@@ -1898,19 +1900,6 @@ Create MLR Learner
 # #> 0.04 0.96
 ```
 
-
-```{r Split the dataset into train and test}
-
-#backup full dataset
-df_train_test <- df
-
-#split
-df_test <- df %>% slice(14923:14959)
-#df_test %>% select(team_1, team_2) %>% head
-df <- df %>% slice(1:14922)
-  
-
-```
 
 
 

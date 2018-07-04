@@ -14942,19 +14942,31 @@ date,team_1,team_2,team_1_goals,team_2_goals,tournament,is_team_1_home,is_team_2
 2018-06-24,England,Panama,6,1,World Cup 2018,FALSE,FALSE,TRUE
 2018-06-24,Japan,Senegal,2,2,World Cup 2018,FALSE,FALSE,TRUE
 2018-06-24,Poland,Colombia,0,3,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-25,Uruguay,Russia,0,0,World Cup 2018,FALSE,TRUE,FALSE
-2018-06-25,Saudi Arabia,Egypt,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-25,Iran,Portugal,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-25,Spain,Morocco,0,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-25,Uruguay,Russia,3,0,World Cup 2018,FALSE,TRUE,FALSE
+2018-06-25,Saudi Arabia,Egypt,2,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-25,Iran,Portugal,1,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-25,Spain,Morocco,2,2,World Cup 2018,FALSE,FALSE,TRUE
 2018-06-26,Denmark,France,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-26,Australia,Peru,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-26,Nigeria,Argentina,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-26,Iceland,Croatia,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-27,Mexico,Sweden,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-27,Korea Republic,Germany,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-27,Serbia,Brazil,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-27,Switzerland,Costa Rica,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-28,Japan,Poland,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-28,Senegal,Colombia,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-28,Panama,Tunisia,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-06-28,England,Belgium,0,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-26,Australia,Peru,0,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-26,Nigeria,Argentina,1,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-26,Iceland,Croatia,1,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-27,Mexico,Sweden,0,3,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-27,Korea Republic,Germany,2,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-27,Serbia,Brazil,0,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-27,Switzerland,Costa Rica,2,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-28,Japan,Poland,0,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-28,Senegal,Colombia,0,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-28,Panama,Tunisia,1,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-06-28,England,Belgium,0,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-01,France,Argentina,4,3,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-01,Uruguay,Portugal,2,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-02,Russia,Spain,2,1,World Cup 2018,TRUE,FALSE,FALSE
+2018-07-02,Croatia,Denmark,2,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-03,Brazil,Mexico,2,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-03,Belgium,Japan,3,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-04,Sweden,Switzerland,1,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-04,Colombia,England,0,2,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-07,Uruguay,France,0,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-07,Brazil,Belgium,0,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-08,Sweden,England,0,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-08,Russia,Croatia,0,0,World Cup 2018,TRUE,FALSE,FALSE
