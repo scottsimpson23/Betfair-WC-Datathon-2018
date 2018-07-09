@@ -1,0 +1,3 @@
+df_test$team_1,df_test$team_2,win_prob,draw_prob,lose_prob
+France,Belgium,0.265360988,0.239779557,0.494859446
+Croatia,England,0.267369739,0.28470321,0.447927072
