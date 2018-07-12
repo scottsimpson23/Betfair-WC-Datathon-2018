@@ -579,11 +579,11 @@ Create MLR Learner
 df_train_test <- df
 
 #split
-df_test <- df %>% slice(14972:14973)
+df_test <- df %>% slice(14974:14975)
 df_test %>% select(team_1, team_2) 
-df <- df %>% slice(1:14971)
+df <- df %>% slice(1:14973)
 
-df_train_test %>% select(team_1, team_2) %>% tail
+#df_train_test %>% select(team_1, team_2) %>% tail
 
 
 ```
@@ -768,7 +768,7 @@ lose_prob <- lose_prob / 100
 
 prediction_df <- tibble(df_test$team_1, df_test$team_2, win_prob, draw_prob, lose_prob)
 prediction_df
-prediction_df %>% write_csv("prediction_20180709_stacked.csv")
+prediction_df %>% write_csv("prediction_20180712_stacked.csv")
 h2o.shutdown(prompt = FALSE)
 toc(log=TRUE)
 

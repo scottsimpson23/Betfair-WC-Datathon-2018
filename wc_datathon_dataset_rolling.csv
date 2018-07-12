@@ -14970,5 +14970,7 @@ date,team_1,team_2,team_1_goals,team_2_goals,tournament,is_team_1_home,is_team_2
 2018-07-07,Brazil,Belgium,1,2,World Cup 2018,FALSE,FALSE,TRUE
 2018-07-08,Sweden,England,0,2,World Cup 2018,FALSE,FALSE,TRUE
 2018-07-08,Russia,Croatia,2,3,World Cup 2018,TRUE,FALSE,FALSE
-2018-07-11,France,Belgium,0,0,World Cup 2018,FALSE,FALSE,TRUE
-2018-07-12,Croatia,England,0,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-11,France,Belgium,1,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-12,Croatia,England,2,1,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-15,Belgium,England,0,0,World Cup 2018,FALSE,FALSE,TRUE
+2018-07-16,France,Croatia,0,0,World Cup 2018,FALSE,FALSE,TRUE
